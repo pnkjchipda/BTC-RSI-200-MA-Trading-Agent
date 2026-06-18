@@ -5,6 +5,23 @@
 An autonomous Bitcoin trading agent that combines a momentum filter (200-day Moving Average) with a contrarian timing signal (RSI 14). It only buys oversold dips inside a confirmed uptrend and always defines its exit before it enters — a hard stop loss, a take-profit target, and a ratcheting trailing stop. Every trade risks no more than 2% of the account, and every decision is explained in plain English.
 
 ---
+## Live Demo
+
+Experience the BTC RSI + 200 MA Trading Agent here:
+
+https://szcsaazb.mule.page/
+
+This trading agent combines the Relative Strength Index (RSI) with the 200-period Moving Average (MA) to identify high-probability Bitcoin trading opportunities. The strategy follows the trend by only taking long positions when BTC trades above the 200 MA and uses RSI to detect potential entry points during momentum reversals.
+
+Key Features:
+- RSI-based entry signals
+- 200 MA trend confirmation
+- Automated trade logic
+- Risk management rules
+- Real-time market monitoring
+- Transparent decision-making
+
+The goal is to reduce emotional trading and provide a simple, disciplined, and data-driven approach to Bitcoin trading.
 
 ## Table of Contents
 
