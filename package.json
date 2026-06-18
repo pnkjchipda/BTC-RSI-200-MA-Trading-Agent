@@ -1,0 +1,28 @@
+{
+  "name": "crypto-risk-guardian-ai",
+  "version": "2.0.0",
+  "description": "Autonomous BTC trading agent combining RSI(14) + MA(200) with adaptive risk management, sentiment analysis, and a paper trading execution engine.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "bitcoin",
+    "trading-agent",
+    "rsi",
+    "moving-average",
+    "risk-management",
+    "bitget",
+    "crypto",
+    "hackathon"
+  ],
+  "author": "Crypto Risk Guardian AI Team",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

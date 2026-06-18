@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0" />
+<title>BTC RSI + 200 MA Trading Agent</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0a0e1a; --panel:#111827; --panel2:#0f172a; --border:#1f2a3f;
+    --text:#e5e7eb; --muted:#94a3b8; --accent:#3b82f6;
+    --buy:#10b981; --sell:#ef4444; --hold:#f59e0b;
+    --green:#10b981; --red:#ef4444; --yellow:#f59e0b;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",sans-serif;font-size:14px;line-height:1.5}
+  a{color:var(--accent);text-decoration:none}
+  .wrap{max-width:1400px;margin:0 auto;padding:24px}
+  header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px}
+  header h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-0.01em}
+  header .sub{color:var(--muted);font-size:13px;margin-top:4px}
+  .pill{padding:4px 10px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;background:var(--panel);border:1px solid var(--border);color:var(--muted)}
+  .pill.live{background:rgba(16,185,129,0.1);border-color:rgba(16,185,129,0.3);color:var(--green)}
+  .pill.live::before{content:"●";margin-right:6px;color:var(--green);animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+  .grid{display:grid;gap:16px}
+  .grid-3{grid-template-columns:repeat(3,1fr)}
+  .grid-4{grid-template-columns:repeat(4,1fr)}
+  .grid-2{grid-template-columns:2fr 1fr}
+  @media(max-width:900px){.grid-3,.grid-4,.grid-2{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px;}
+  .card h2{margin:0 0 14px 0;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted)}
+  .signal-card{padding:24px;display:flex;flex-direction:column;gap:14px;border-width:2px}
+  .signal-card.buy{border-color:var(--buy);background:linear-gradient(135deg,rgba(16,185,129,0.12),rgba(16,185,129,0.02))}
+  .signal-card.sell{border-color:var(--sell);background:linear-gradient(135deg,rgba(239,68,68,0.12),rgba(239,68,68,0.02))}
+  .signal-card.hold{border-color:var(--hold);background:linear-gradient(135deg,rgba(245,158,11,0.10),rgba(245,158,11,0.02))}
+  .signal-badge{display:inline-block;font-size:48px;font-weight:800;letter-spacing:-0.02em}
+  .signal-card.buy .signal-badge{color:var(--buy)}
+  .signal-card.sell .signal-badge{color:var(--sell)}
+  .signal-card.hold .signal-badge{color:var(--hold)}
+  .signal-card .meta{color:var(--muted);font-size:12px;letter-spacing:0.05em;text-transform:uppercase}
+  .signal-card .expl{font-size:14px;line-height:1.6;color:#cbd5e1}
+  .metric{display:flex;flex-direction:column;gap:4px}
+  .metric .lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;font-weight:600}
+  .metric .val{font-size:24px;font-weight:700;letter-spacing:-0.01em;font-variant-numeric:tabular-nums}
+  .metric .sub{font-size:12px;color:var(--muted)}
+  .row-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  .green{color:var(--green)} .red{color:var(--red)} .yellow{color:var(--yellow)} .blue{color:var(--accent)}
+  .chart-wrap{position:relative;height:340px}
+  .chart-wrap-sm{position:relative;height:160px}
+  table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border)}
+  th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;font-weight:600}
+  tbody tr:hover{background:rgba(59,130,246,0.05)}
+  .tag{display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;letter-spacing:0.04em}
+  .tag.buy{background:rgba(16,185,129,0.15);color:var(--green)}
+  .tag.sell{background:rgba(239,68,68,0.15);color:var(--red)}
+  .tag.hold{background:rgba(245,158,11,0.15);color:var(--yellow)}
+  .tag.tp{background:rgba(16,185,129,0.15);color:var(--green)}
+  .tag.sl{background:rgba(239,68,68,0.15);color:var(--red)}
+  .tag.tr{background:rgba(59,130,246,0.15);color:var(--accent)}
+  .kvgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px 18px;font-size:13px}
+  .kvgrid .k{color:var(--muted)}
+  .kvgrid .v{text-align:right;font-variant-numeric:tabular-nums;font-weight:500}
+  .strategy-rules{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  .rule{padding:10px 12px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;font-size:13px}
+  .rule b{color:#fff;display:block;margin-bottom:2px}
+  .log{max-height:380px;overflow-y:auto}
+  .log-item{display:grid;grid-template-columns:90px 60px 1fr;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;align-items:center}
+  .log-item:last-child{border-bottom:none}
+  .log-item .d{color:var(--muted);font-variant-numeric:tabular-nums;font-size:12px}
+  footer{margin-top:28px;text-align:center;color:var(--muted);font-size:12px;padding:16px}
+  .risk-bar{height:8px;background:var(--panel2);border-radius:4px;overflow:hidden;margin-top:6px}
+  .risk-bar-fill{height:100%;border-radius:4px;transition:width 0.4s}
+  .scrollx{overflow-x:auto}
+  .nowrap{white-space:nowrap}
+  /* Chat */
+  .chat-wrap{display:flex;flex-direction:column;height:560px}
+  .chat-msgs{flex:1;overflow-y:auto;padding:6px 4px;display:flex;flex-direction:column;gap:10px}
+  .msg{max-width:90%;padding:10px 14px;border-radius:12px;font-size:13.5px;line-height:1.55;word-wrap:break-word}
+  .msg.user{align-self:flex-end;background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;border-bottom-right-radius:4px}
+  .msg.bot{align-self:flex-start;background:var(--panel2);border:1px solid var(--border);border-bottom-left-radius:4px}
+  .msg .reply-block{margin-top:8px;padding:8px 10px;background:rgba(0,0,0,0.25);border-radius:6px;font-size:12.5px;font-variant-numeric:tabular-nums}
+  .msg .reply-block .row{display:flex;justify-content:space-between;padding:2px 0}
+  .msg .reply-block .k{color:var(--muted)} .msg .reply-block .v{color:#fff;font-weight:600}
+  .chat-input{display:flex;gap:8px;margin-top:10px}
+  .chat-input input{flex:1;background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:10px;font-size:13.5px;font-family:inherit;outline:none}
+  .chat-input input:focus{border-color:var(--accent)}
+  .chat-input button{background:var(--accent);color:#fff;border:none;padding:0 18px;border-radius:10px;font-weight:600;cursor:pointer;font-size:13.5px}
+  .chat-input button:hover{background:#2563eb}
+  .quick-actions{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+  .qa-btn{background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:8px;font-size:12px;cursor:pointer;font-family:inherit;transition:all 0.15s}
+  .qa-btn:hover{border-color:var(--accent);color:var(--accent);background:rgba(59,130,246,0.08)}
+  /* Controls */
+  .ctrl-row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px}
+  .ctrl-row:last-child{border-bottom:none}
+  .ctrl-row label{color:var(--muted)}
+  .ctrl-row input[type=number]{width:120px;background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-family:inherit;font-variant-numeric:tabular-nums;text-align:right;outline:none}
+  .ctrl-row input[type=number]:focus{border-color:var(--accent)}
+  .ctrl-btn{background:transparent;color:var(--accent);border:1px solid var(--accent);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;font-family:inherit}
+  .ctrl-btn:hover{background:rgba(59,130,246,0.1)}
+  .ctrl-btn.danger{color:var(--red);border-color:var(--red)}
+  .ctrl-btn.danger:hover{background:rgba(239,68,68,0.1)}
+  /* Execution engine */
+  .exec-grid{display:grid;grid-template-columns:1.2fr 1fr;gap:16px}
+  @media(max-width:1000px){.exec-grid{grid-template-columns:1fr}}
+  .exec-controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
+  .exec-state{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+  .exec-state .cell{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px}
+  .exec-state .cell .lbl{font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:0.06em;font-weight:600;margin-bottom:4px}
+  .exec-state .cell .val{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
+  .order-log{max-height:340px;overflow-y:auto;font-family:"SF Mono","Menlo","Consolas",monospace;font-size:12px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px}
+  .order-row{padding:5px 0;border-bottom:1px dashed rgba(148,163,184,0.12);display:grid;grid-template-columns:78px 110px 1fr;gap:10px;align-items:start;line-height:1.45}
+  .order-row:last-child{border-bottom:none}
+  .order-row .t{color:var(--muted);font-variant-numeric:tabular-nums}
+  .order-row .e{font-weight:700;letter-spacing:0.02em}
+  .order-row.buy   .e{color:var(--green)}
+  .order-row.sell  .e{color:var(--red)}
+  .order-row.stop  .e{color:var(--red)}
+  .order-row.tp    .e{color:var(--green)}
+  .order-row.trail .e{color:var(--accent)}
+  .order-row.signal .e{color:var(--yellow)}
+  .order-row.info  .e{color:var(--muted)}
+  .progress{height:4px;background:var(--panel2);border-radius:2px;overflow:hidden;margin-top:4px}
+  .progress > div{height:100%;background:linear-gradient(90deg,var(--accent),#60a5fa);transition:width 0.2s}
+  .pill-paper{background:rgba(245,158,11,0.15);color:var(--yellow);border:1px solid rgba(245,158,11,0.4);padding:3px 9px;border-radius:999px;font-size:10.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase}
+  .pill-live2{background:rgba(16,185,129,0.15);color:var(--green);border:1px solid rgba(16,185,129,0.4);padding:3px 9px;border-radius:999px;font-size:10.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase}
+  details{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:10px;font-size:12px}
+  details summary{cursor:pointer;color:var(--accent);font-weight:600;outline:none}
+  details pre{background:#020617;padding:10px;border-radius:6px;overflow-x:auto;color:#cbd5e1;font-size:11.5px;line-height:1.55}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>BTC RSI + 200 MA Trading Agent <span class="pill-live2" style="vertical-align:middle;font-size:10.5px;margin-left:6px">v2 · Adaptive</span></h1>
+      <div class="sub">Adaptive RSI bands · Fear &amp; Greed confluence · news sentiment · drawdown circuit breaker</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span class="pill live">Live</span>
+      <span class="pill" id="updatedPill">Updated —</span>
+    </div>
+  </header>
+
+  <section class="grid grid-2" style="margin-bottom:16px">
+    <div class="card signal-card" id="signalCard">
+      <div>
+        <div class="meta">Current Signal · BTC/USDT</div>
+        <div class="signal-badge" id="signalBadge">—</div>
+      </div>
+      <div class="expl" id="signalExpl">—</div>
+      <div class="row-metrics" style="margin-top:6px">
+        <div class="metric"><div class="lbl">Price</div><div class="val" id="mPrice">—</div></div>
+        <div class="metric"><div class="lbl">RSI(14)</div><div class="val" id="mRsi">—</div></div>
+        <div class="metric"><div class="lbl">MA(200)</div><div class="val" id="mMa">—</div></div>
+        <div class="metric"><div class="lbl">Risk Level</div><div class="val" id="mRisk">—</div><div class="sub" id="mRiskNote">—</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Position Sizing (per trade)</h2>
+      <div class="kvgrid">
+        <div class="k">Account balance</div><div class="v" id="psBal">—</div>
+        <div class="k">Risk per trade (2%)</div><div class="v" id="psRisk">—</div>
+        <div class="k">Suggested quantity</div><div class="v" id="psQty">—</div>
+        <div class="k">Suggested notional</div><div class="v" id="psNotional">—</div>
+        <div class="k">Entry price</div><div class="v" id="psEntry">—</div>
+        <div class="k">Stop loss (-5%)</div><div class="v red" id="psSl">—</div>
+        <div class="k">Take profit (+15%)</div><div class="v green" id="psTp">—</div>
+        <div class="k">Trailing stop (-3%)</div><div class="v yellow">tracks highest</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="grid grid-4" style="margin-bottom:16px">
+    <div class="card metric"><div class="lbl">Total Return</div><div class="val" id="pTotal">—</div><div class="sub" id="pTotalSub">—</div></div>
+    <div class="card metric"><div class="lbl">Win Rate</div><div class="val" id="pWin">—</div><div class="sub" id="pWinSub">—</div></div>
+    <div class="card metric"><div class="lbl">Max Drawdown</div><div class="val red" id="pDd">—</div><div class="sub">peak-to-trough equity</div></div>
+    <div class="card metric"><div class="lbl">Profit Factor</div><div class="val" id="pPf">—</div><div class="sub" id="pPfSub">gross profit / gross loss</div></div>
+  </section>
+
+  <section class="grid" style="grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px">
+    <div class="card">
+      <h2>Fear &amp; Greed Index</h2>
+      <div style="text-align:center">
+        <div id="fngBig" style="font-size:54px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums">—</div>
+        <div id="fngLabel" style="font-size:13px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;margin-top:4px">—</div>
+      </div>
+      <div style="position:relative;height:10px;border-radius:5px;margin:14px 0 6px;background:linear-gradient(90deg,#ef4444 0%,#f59e0b 35%,#9ca3af 50%,#84cc16 65%,#10b981 100%)">
+        <div id="fngMarker" style="position:absolute;top:-6px;width:4px;height:22px;background:#fff;border-radius:2px;box-shadow:0 0 6px rgba(0,0,0,0.5);transform:translateX(-50%)"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);margin-bottom:10px">
+        <span>Ext Fear</span><span>Fear</span><span>Neutral</span><span>Greed</span><span>Ext Greed</span>
+      </div>
+      <div class="chart-wrap-sm"><canvas id="fngChart"></canvas></div>
+      <p style="font-size:11.5px;color:var(--muted);margin:8px 0 0 0;line-height:1.5">
+        <b>Confluence rule:</b> block new buys when F&amp;G ≥ 60. Boost size 1.25× during Extreme Fear (&lt;25).
+      </p>
+    </div>
+    <div class="card">
+      <h2>News Sentiment</h2>
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px">
+        <div>
+          <span id="newsPctBig" style="font-size:32px;font-weight:800;letter-spacing:-0.01em">—</span>
+          <span style="color:var(--muted);font-size:12px;margin-left:6px">net polarity</span>
+        </div>
+        <span class="tag" id="newsLabelTag">—</span>
+      </div>
+      <div style="display:flex;gap:6px;font-size:11px;margin-bottom:10px">
+        <span class="tag tp" id="newsPos">+ —</span>
+        <span class="tag sl" id="newsNeg">− —</span>
+        <span class="tag hold" id="newsAdj">filter: —</span>
+      </div>
+      <div id="newsList" style="max-height:260px;overflow-y:auto;font-size:12px;line-height:1.5"></div>
+      <p style="font-size:11.5px;color:var(--muted);margin:8px 0 0 0;line-height:1.5">
+        Scored against 21 negative + 16 positive crypto-context keywords. Headlines polled live from CoinDesk, CoinTelegraph, Decrypt, BitcoinMagazine, TheBlock.
+      </p>
+    </div>
+    <div class="card">
+      <h2>Adaptive RSI Thresholds</h2>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="cell" style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:10px;color:var(--muted);letter-spacing:0.06em;text-transform:uppercase;font-weight:600">Buy below</div>
+          <div id="aRsiBuy" style="font-size:30px;font-weight:800;color:var(--green)">—</div>
+        </div>
+        <div class="cell" style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:10px;color:var(--muted);letter-spacing:0.06em;text-transform:uppercase;font-weight:600">Sell above</div>
+          <div id="aRsiSell" style="font-size:30px;font-weight:800;color:var(--red)">—</div>
+        </div>
+      </div>
+      <div class="kvgrid">
+        <div class="k">Volatility regime</div><div class="v" id="aRegime">—</div>
+        <div class="k">ATR(14) %</div><div class="v" id="aAtr">—</div>
+        <div class="k">Position multiplier</div><div class="v" id="aMult">—</div>
+        <div class="k">Trailing stop</div><div class="v" id="aTrail">—</div>
+        <div class="k">DD circuit breaker</div><div class="v" id="aDdGuard">—</div>
+        <div class="k">Cooldown after loss</div><div class="v">10 bars</div>
+      </div>
+      <p style="font-size:11.5px;color:var(--muted);margin:10px 0 0 0;line-height:1.5">
+        Bands tighten in <b>high-vol</b> regimes (ATR%-rank &gt; 80th pct) and the trailing stop is tightened 30%. New entries pause if drawdown breaches 7%.
+      </p>
+    </div>
+  </section>
+
+  <section class="grid grid-2" style="margin-bottom:16px">
+    <div class="card">
+      <h2>BTC Price · 200-day MA</h2>
+      <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
+      <h2 style="margin-top:18px">RSI(14)</h2>
+      <div class="chart-wrap-sm"><canvas id="rsiChart"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>Strategy Rules · v2</h2>
+      <div class="strategy-rules">
+        <div class="rule"><b>BUY (base)</b>RSI(14) &lt; 30 AND price &gt; MA200 AND MA200 rising</div>
+        <div class="rule"><b>BUY (high vol)</b>tighter — RSI &lt; 25, size × 0.7</div>
+        <div class="rule"><b>SELL</b>RSI &gt; 70 (or 75 in high vol)</div>
+        <div class="rule"><b>Sentiment gate</b>block if F&amp;G ≥ 60; boost 1.25× if F&amp;G &lt; 25</div>
+        <div class="rule"><b>News filter</b>block if net polarity &lt; −40%; reduce if &lt; −15%</div>
+        <div class="rule"><b>Cooldown</b>no new entry 10 bars after a loss</div>
+        <div class="rule"><b>DD guard</b>halt entries if drawdown &gt; 7%</div>
+        <div class="rule"><b>Stop / TP / Trail</b>5% / 15% / 3% (tightened in high vol)</div>
+      </div>
+
+      <h2 style="margin-top:20px">Equity Curve</h2>
+      <div class="chart-wrap-sm"><canvas id="equityChart"></canvas></div>
+    </div>
+  </section>
+
+  <section class="grid grid-2" style="margin-bottom:16px">
+    <div class="card">
+      <h2>Trade History · Backtest</h2>
+      <div class="scrollx">
+        <table>
+          <thead><tr><th>Entry</th><th>Exit</th><th class="nowrap">Entry $</th><th class="nowrap">Exit $</th><th>Qty</th><th>PnL</th><th>%</th><th>Reason</th></tr></thead>
+          <tbody id="tradesBody"></tbody>
+        </table>
+      </div>
+      <div id="openPosBox" style="margin-top:12px"></div>
+    </div>
+    <div class="card">
+      <h2>Recent Decision Log · Plain English</h2>
+      <div class="log" id="decisionLog"></div>
+    </div>
+  </section>
+
+  <section class="grid grid-2" style="margin-bottom:16px">
+    <div class="card">
+      <h2>Chat with the Agent</h2>
+      <div class="quick-actions">
+        <button class="qa-btn" data-q="Should I buy BTC?">Should I buy BTC?</button>
+        <button class="qa-btn" data-q="Explain current signal">Explain current signal</button>
+        <button class="qa-btn" data-q="Run backtest">Run backtest</button>
+        <button class="qa-btn" data-q="Show risk analysis">Show risk analysis</button>
+        <button class="qa-btn" data-q="Show sentiment">Sentiment</button>
+        <button class="qa-btn" data-q="Show news">News</button>
+        <button class="qa-btn" data-q="Show adaptive thresholds">Adaptive</button>
+        <button class="qa-btn" data-q="Show trade history">Trades</button>
+        <button class="qa-btn" data-q="help">Help</button>
+      </div>
+      <div class="chat-wrap">
+        <div class="chat-msgs" id="chatMsgs"></div>
+        <form class="chat-input" id="chatForm" autocomplete="off">
+          <input id="chatInput" placeholder="Ask the agent — e.g. 'Should I buy BTC?'" />
+          <button type="submit">Send</button>
+        </form>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Agent Controls</h2>
+      <div class="ctrl-row">
+        <label for="cBal">Account balance</label>
+        <input type="number" id="cBal" step="100" min="100" />
+      </div>
+      <div class="ctrl-row">
+        <label for="cRisk">Risk per trade (%)</label>
+        <input type="number" id="cRisk" step="0.1" min="0.1" max="10" />
+      </div>
+      <div class="ctrl-row">
+        <label for="cSl">Stop loss (%)</label>
+        <input type="number" id="cSl" step="0.1" min="0.5" max="20" />
+      </div>
+      <div class="ctrl-row">
+        <label for="cTp">Take profit (%)</label>
+        <input type="number" id="cTp" step="0.1" min="0.5" max="50" />
+      </div>
+      <div class="ctrl-row">
+        <label>Computed position</label>
+        <span class="v" id="cPos">—</span>
+      </div>
+      <div class="ctrl-row">
+        <label>Stop / Target</label>
+        <span class="v" id="cSlTp">—</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+        <button class="ctrl-btn" id="btnApply">Apply to dashboard</button>
+        <button class="ctrl-btn" id="btnReset">Reset defaults</button>
+        <button class="ctrl-btn" id="btnRun">Run backtest</button>
+        <button class="ctrl-btn danger" id="btnClear">Clear chat</button>
+      </div>
+      <p style="font-size:11.5px;color:var(--muted);margin:14px 0 0 0;line-height:1.5">
+        Controls drive the position-sizing calculator and the chat answers in real time.
+        Strategy thresholds (RSI 30 / 70, MA200) are locked to match the spec.
+      </p>
+    </div>
+  </section>
+
+  <section style="margin-bottom:16px">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+        <div>
+          <h2 style="margin:0">Execution Engine · Paper Trading</h2>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">Closes the loop: perception → decision → <b style="color:var(--text)">execution</b> → risk management</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="pill-paper" id="execMode">Paper Mode</span>
+          <span class="pill" id="execStatus">Idle</span>
+        </div>
+      </div>
+
+      <div class="exec-state">
+        <div class="cell"><div class="lbl">Paper Balance</div><div class="val" id="exBal">—</div></div>
+        <div class="cell"><div class="lbl">Open Position</div><div class="val" id="exPos">Flat</div></div>
+        <div class="cell"><div class="lbl">Unrealized PnL</div><div class="val" id="exUpnl">$0.00</div></div>
+        <div class="cell"><div class="lbl">Bar</div><div class="val" id="exBar">—</div></div>
+      </div>
+
+      <div class="exec-controls">
+        <button class="ctrl-btn" id="exTick">▶ Step 1 bar</button>
+        <button class="ctrl-btn" id="exAuto">⏩ Auto-run</button>
+        <button class="ctrl-btn" id="exPause" disabled>⏸ Pause</button>
+        <button class="ctrl-btn" id="exFlat">Close position</button>
+        <button class="ctrl-btn danger" id="exReset">Reset</button>
+        <label style="font-size:12px;color:var(--muted);margin-left:8px">Speed
+          <select id="exSpeed" style="background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:6px;font-family:inherit;margin-left:6px">
+            <option value="400">Slow</option>
+            <option value="120" selected>Normal</option>
+            <option value="30">Fast</option>
+            <option value="0">Instant</option>
+          </select>
+        </label>
+      </div>
+      <div class="progress"><div id="exProg" style="width:0%"></div></div>
+
+      <div class="exec-grid" style="margin-top:14px">
+        <div>
+          <h2 style="margin-top:4px">Order Lifecycle Log</h2>
+          <div class="order-log" id="orderLog"></div>
+        </div>
+        <div>
+          <h2 style="margin-top:4px">How execution works</h2>
+          <p style="font-size:12.5px;color:#cbd5e1;line-height:1.6;margin:0 0 8px 0">
+            On every new bar the engine runs the full loop:
+          </p>
+          <ol style="font-size:12.5px;color:#cbd5e1;line-height:1.7;margin:0 0 8px 18px;padding:0">
+            <li><b>Perceive</b> — ingest OHLC + recompute RSI(14) / MA(200)</li>
+            <li><b>Decide</b> — apply BUY / SELL / HOLD rule</li>
+            <li><b>Execute</b> — emit <code>MARKET_BUY</code> or <code>MARKET_SELL</code>, place protective <code>STOP_LOSS</code> + <code>TAKE_PROFIT</code>, ratchet trailing stop on new highs</li>
+            <li><b>Manage risk</b> — check stop / TP / trailing fill on every bar's high-low range, prioritised stop → TP → signal</li>
+          </ol>
+          <p style="font-size:12.5px;color:#cbd5e1;line-height:1.6;margin:0 0 8px 0">
+            The executor is exchange-agnostic. The current build ships with a <b>paper broker</b> (deterministic fills at the simulated price). Swapping in Bitget, Binance, or any CCXT-supported venue is a single adapter.
+          </p>
+          <details>
+            <summary>Show Bitget adapter stub</summary>
+<pre>// Pluggable broker interface (paper today, live tomorrow)
+class BitgetBroker {
+  constructor(apiKey, secret, passphrase) { /* sign requests */ }
+
+  async marketBuy(symbol, qty) {
+    // POST /api/v2/spot/trade/place-order
+    return fetch('https://api.bitget.com/api/v2/spot/trade/place-order', {
+      method:'POST',
+      headers: this.sign({ symbol, side:'buy', orderType:'market', size:qty }),
+      body: JSON.stringify({ symbol, side:'buy', orderType:'market', size:qty })
+    }).then(r => r.json());
+  }
+
+  async placeStop(symbol, qty, stopPrice) {
+    // POST /api/v2/spot/trade/place-plan-order
+    return this.signedPost('/place-plan-order', {
+      symbol, side:'sell', triggerPrice:stopPrice, size:qty,
+      orderType:'market', planType:'normal_plan'
+    });
+  }
+
+  async placeTakeProfit(symbol, qty, tpPrice) {
+    return this.signedPost('/place-plan-order', {
+      symbol, side:'sell', triggerPrice:tpPrice, size:qty,
+      orderType:'market', planType:'normal_plan'
+    });
+  }
+}
+
+// The strategy engine never changes — only the broker swaps.
+const broker = LIVE ? new BitgetBroker(...) : new PaperBroker();</pre>
+          </details>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="grid grid-2" style="margin-bottom:16px">
+    <div class="card">
+      <h2>Performance Report · Backtest</h2>
+      <div class="kvgrid" id="perfTable"></div>
+    </div>
+    <div class="card">
+      <h2>About this Agent</h2>
+      <p style="font-size:13px;line-height:1.7;color:#cbd5e1;margin:0 0 10px 0">
+        This is an autonomous Bitcoin trading agent that combines a momentum filter
+        (200-day Moving Average) with a contrarian timing signal (RSI 14). It only
+        buys oversold dips inside a confirmed uptrend, and it always defines its
+        exit before it enters — a hard stop loss, a take-profit target, and a
+        ratcheting trailing stop. Every trade risks no more than 2% of the
+        account, and every decision is explained in plain English.
+      </p>
+      <p style="font-size:13px;line-height:1.7;color:#cbd5e1;margin:0 0 10px 0">
+        <b>Data source:</b> Binance spot BTCUSDT daily klines. <b>Indicators:</b>
+        pandas-ta (RSI, SMA). <b>Backtest:</b> walk-forward, no look-ahead, exit
+        priority = stop → take-profit → signal.
+      </p>
+      <p style="font-size:12px;color:var(--muted);margin:0">
+        Educational use only — not investment advice. Past performance does not
+        guarantee future results.
+      </p>
+    </div>
+  </section>
+
+  <footer>BTC RSI + 200 MA Trading Agent · Built with MuleRun · <span id="footerMeta"></span></footer>
+</div>
+
+<script id="DATA_PLACEHOLDER" type="application/json">{"meta":{"symbol":"BTCUSDT","timeframe":"1d","version":"v2","start_date":"2023-09-14","end_date":"2026-06-09","bars":1000,"initial_balance":10000.0,"risk_pct":0.02,"sl_pct":0.05,"tp_pct":0.15,"trail_pct":0.03,"rsi_buy_base":30,"rsi_sell_base":70,"rsi_buy_high_vol":25,"rsi_buy_low_vol":30,"rsi_sell_high_vol":75,"rsi_sell_low_vol":70,"dd_halt_pct":0.07,"dd_resume_pct":0.03},"current":{"price":62647.06,"rsi":25.51,"ma200":78281.25,"signal":"HOLD","signal_color":"hold","explanation":"HOLD. RSI 25.5 is in the adaptive neutral zone (30\u201370, normal vol). Price is in a downtrend. Sentiment = Extreme Fear (10), news polarity +21.4%. Wait for a high-confluence setup.","regime":"normal","adaptive_rsi_buy":30,"adaptive_rsi_sell":70,"atr_pct":3.808,"fng_value":10,"fng_label":"Extreme Fear","news_score":6,"news_pct":21.4,"news_label":"bullish","news_adj":"boost","risk_level":"MODERATE","risk_note":"Adaptive bands active. Normal regime.","suggested_qty":0.06385,"suggested_notional":4000.0,"stop_loss_price":59514.71,"take_profit_price":72044.12,"risk_dollars":200.0},"performance":{"initial_balance":10000.0,"final_equity":9880.58,"total_pnl":-119.41,"total_return_pct":-1.19,"trades":2,"wins":1,"losses":1,"win_rate":50.0,"avg_win":82.23,"avg_loss":-201.64,"profit_factor":0.41,"expectancy":-59.7,"max_drawdown_pct":2.46,"gross_profit":82.23,"gross_loss":201.64},"filter_stats":{"filtered_by_sentiment":0,"filtered_by_dd_halt":0,"filtered_by_cooldown":1,"filtered_by_slope":0,"filtered_by_vol_regime":0,"time_in_market_pct":0.9},"trades":[{"entry_date":"2024-06-24","exit_date":"2024-07-02","entry":60293.3,"exit":61945.91,"qty":0.049757,"pnl":82.23,"pnl_pct":2.74,"reason":"Trailing Stop","bars_held":8,"regime_at_entry":"normal","fng_at_entry":51},{"entry_date":"2025-02-25","exit_date":"2025-02-26","entry":88680.4,"exit":84246.38,"qty":0.045477,"pnl":-201.64,"pnl_pct":-5.0,"reason":"Stop Loss","bars_held":1,"regime_at_entry":"normal","fng_at_entry":25}],"open_position":null,"chart":[{"date":"2024-04-01","close":69649.8,"ma200":43544.24,"rsi":56.17,"atr_pct":4.76},{"date":"2024-04-02","close":65463.99,"ma200":43738.56,"rsi":47.36,"atr_pct":5.262},{"date":"2024-04-03","close":65963.28,"ma200":43935.58,"rsi":48.4,"atr_pct":5.11},{"date":"2024-04-04","close":68487.79,"ma200":44145.38,"rsi":53.41,"atr_pct":5.013},{"date":"2024-04-05","close":67820.62,"ma200":44350.67,"rsi":51.98,"atr_pct":4.996},{"date":"2024-04-06","close":68896.0,"ma200":44559.1,"rsi":54.12,"atr_pct":4.799},{"date":"2024-04-07","close":69360.39,"ma200":44770.28,"rsi":55.05,"atr_pct":4.581},{"date":"2024-04-08","close":71620.0,"ma200":44995.54,"rsi":59.38,"atr_pct":4.494},{"date":"2024-04-09","close":69146.0,"ma200":45208.37,"rsi":53.33,"atr_pct":4.689},{"date":"2024-04-10","close":70631.08,"ma200":45428.64,"rsi":56.21,"atr_pct":4.632},{"date":"2024-04-11","close":70006.23,"ma200":45647.43,"rsi":54.68,"atr_pct":4.517},{"date":"2024-04-12","close":67116.52,"ma200":45851.49,"rsi":48.15,"atr_pct":5.029},{"date":"2024-04-13","close":63924.51,"ma200":46040.01,"rsi":42.16,"atr_pct":5.715},{"date":"2024-04-14","close":65661.84,"ma200":46236.45,"rsi":46.09,"atr_pct":5.569},{"date":"2024-04-15","close":63419.99,"ma200":46418.44,"rsi":42.11,"atr_pct":5.871},{"date":"2024-04-16","close":63793.39,"ma200":46602.87,"rsi":42.99,"atr_pct":5.73},{"date":"2024-04-17","close":61277.37,"ma200":46774.45,"rsi":38.71,"atr_pct":6.101},{"date":"2024-04-18","close":63470.08,"ma200":46951.84,"rsi":43.95,"atr_pct":5.842},{"date":"2024-04-19","close":63818.01,"ma200":47133.45,"rsi":44.76,"atr_pct":6.05},{"date":"2024-04-20","close":64940.59,"ma200":47321.02,"rsi":47.39,"atr_pct":5.777},{"date":"2024-04-21","close":64941.15,"ma200":47506.84,"rsi":47.39,"atr_pct":5.525},{"date":"2024-04-22","close":66819.32,"ma200":47703.88,"rsi":51.84,"atr_pct":5.278},{"date":"2024-04-23","close":66414.0,"ma200":47896.3,"rsi":50.84,"atr_pct":5.083},{"date":"2024-04-24","close":64289.59,"ma200":48077.96,"rsi":45.85,"atr_pct":5.261},{"date":"2024-04-25","close":64498.34,"ma200":48260.87,"rsi":46.41,"atr_pct":5.147},{"date":"2024-04-26","close":63770.01,"ma200":48441.77,"rsi":44.68,"atr_pct":5.004},{"date":"2024-04-27","close":63461.98,"ma200":48622.13,"rsi":43.94,"atr_pct":4.842},{"date":"2024-04-28","close":63118.62,"ma200":48803.34,"rsi":43.08,"atr_pct":4.7},{"date":"2024-04-29","close":63866.0,"ma200":48988.87,"rsi":45.58,"atr_pct":4.589},{"date":"2024-04-30","close":60672.0,"ma200":49157.92,"rsi":37.91,"atr_pct":5.138},{"date":"2024-05-01","close":58364.97,"ma200":49315.49,"rsi":33.52,"atr_pct":5.484},{"date":"2024-05-02","close":59060.61,"ma200":49475.02,"rsi":35.93,"atr_pct":5.361},{"date":"2024-05-03","close":62882.01,"ma200":49646.92,"rsi":47.24,"atr_pct":5.189},{"date":"2024-05-04","close":63892.04,"ma200":49824.41,"rsi":49.76,"atr_pct":4.966},{"date":"2024-05-05","close":64012.0,"ma200":50002.87,"rsi":50.06,"atr_pct":4.806},{"date":"2024-05-06","close":63165.19,"ma200":50175.12,"rsi":47.85,"atr_pct":4.839},{"date":"2024-05-07","close":62312.08,"ma200":50338.34,"rsi":45.66,"atr_pct":4.803},{"date":"2024-05-08","close":61193.03,"ma200":50494.75,"rsi":42.89,"atr_pct":4.79},{"date":"2024-05-09","close":63074.01,"ma200":50660.16,"rsi":48.55,"atr_pct":4.632},{"date":"2024-05-10","close":60799.99,"ma200":50798.81,"rsi":43.0,"atr_pct":4.848},{"date":"2024-05-11","close":60825.99,"ma200":50933.33,"rsi":43.08,"atr_pct":4.62},{"date":"2024-05-12","close":61483.99,"ma200":51068.27,"rsi":45.18,"atr_pct":4.393},{"date":"2024-05-13","close":62940.08,"ma200":51212.21,"rsi":49.61,"atr_pct":4.291},{"date":"2024-05-14","close":61577.49,"ma200":51350.64,"rsi":45.87,"atr_pct":4.302},{"date":"2024-05-15","close":66206.5,"ma200":51511.26,"rsi":57.56,"atr_pct":4.268},{"date":"2024-05-16","close":65235.21,"ma200":51664.81,"rsi":54.88,"atr_pct":4.258},{"date":"2024-05-17","close":67024.0,"ma200":51827.56,"rsi":58.69,"atr_pct":4.098},{"date":"2024-05-18","close":66915.2,"ma200":51988.93,"rsi":58.37,"atr_pct":3.897},{"date":"2024-05-19","close":66274.01,"ma200":52143.2,"rsi":56.4,"atr_pct":3.852},{"date":"2024-05-20","close":71446.62,"ma200":52325.72,"rsi":66.28,"atr_pct":3.863},{"date":"2024-05-21","close":70148.34,"ma200":52502.88,"rsi":62.45,"atr_pct":3.941},{"date":"2024-05-22","close":69166.62,"ma200":52673.4,"rsi":59.65,"atr_pct":3.899},{"date":"2024-05-23","close":67969.65,"ma200":52838.19,"rsi":56.33,"atr_pct":4.082},{"date":"2024-05-24","close":68549.99,"ma200":53005.71,"rsi":57.56,"atr_pct":4.035},{"date":"2024-05-25","close":69290.57,"ma200":53175.17,"rsi":59.15,"atr_pct":3.821},{"date":"2024-05-26","close":68507.67,"ma200":53339.58,"rsi":56.73,"atr_pct":3.738},{"date":"2024-05-27","close":69436.43,"ma200":53503.26,"rsi":58.88,"atr_pct":3.675},{"date":"2024-05-28","close":68398.39,"ma200":53658.74,"rsi":55.56,"atr_pct":3.706},{"date":"2024-05-29","close":67652.42,"ma200":53811.36,"rsi":53.25,"atr_pct":3.671},{"date":"2024-05-30","close":68352.17,"ma200":53967.8,"rsi":55.14,"atr_pct":3.622},{"date":"2024-05-31","close":67540.01,"ma200":54123.18,"rsi":52.48,"atr_pct":3.654},{"date":"2024-06-01","close":67766.85,"ma200":54284.26,"rsi":53.16,"atr_pct":3.432},{"date":"2024-06-02","close":67765.63,"ma200":54433.8,"rsi":53.16,"atr_pct":3.313},{"date":"2024-06-03","close":68809.9,"ma200":54597.03,"rsi":56.47,"atr_pct":3.308},{"date":"2024-06-04","close":70537.84,"ma200":54766.65,"rsi":61.35,"atr_pct":3.249},{"date":"2024-06-05","close":71108.0,"ma200":54939.35,"rsi":62.83,"atr_pct":3.131},{"date":"2024-06-06","close":70799.06,"ma200":55106.54,"rsi":61.46,"atr_pct":3.079},{"date":"2024-06-07","close":69355.6,"ma200":55266.08,"rsi":55.37,"atr_pct":3.287},{"date":"2024-06-08","close":69310.46,"ma200":55433.92,"rsi":55.18,"atr_pct":3.097},{"date":"2024-06-09","close":69648.14,"ma200":55595.12,"rsi":56.35,"atr_pct":2.937},{"date":"2024-06-10","close":69540.0,"ma200":55756.35,"rsi":55.85,"atr_pct":2.836},{"date":"2024-06-11","close":67314.24,"ma200":55904.35,"rsi":46.63,"atr_pct":3.096},{"date":"2024-06-12","close":68263.99,"ma200":56056.77,"rsi":50.4,"atr_pct":3.159},{"date":"2024-06-13","close":66773.01,"ma200":56203.4,"rsi":45.03,"atr_pct":3.234},{"date":"2024-06-14","close":66043.99,"ma200":56347.4,"rsi":42.64,"atr_pct":3.284},{"date":"2024-06-15","close":66228.25,"ma200":56489.45,"rsi":43.46,"atr_pct":3.108},{"date":"2024-06-16","close":66676.87,"ma200":56633.56,"rsi":45.49,"atr_pct":2.97},{"date":"2024-06-17","close":66504.33,"ma200":56777.46,"rsi":44.82,"atr_pct":2.998},{"date":"2024-06-18","close":65175.32,"ma200":56909.93,"rsi":39.95,"atr_pct":3.117},{"date":"2024-06-19","close":64974.37,"ma200":57037.55,"rsi":39.26,"atr_pct":3.02},{"date":"2024-06-20","close":64869.99,"ma200":57162.04,"rsi":38.88,"atr_pct":3.021},{"date":"2024-06-21","close":64143.56,"ma200":57272.8,"rsi":36.26,"atr_pct":3.025},{"date":"2024-06-22","close":64262.01,"ma200":57373.74,"rsi":37.01,"atr_pct":2.871},{"date":"2024-06-23","close":63210.01,"ma200":57470.98,"rsi":33.29,"atr_pct":2.862},{"date":"2024-06-24","close":60293.3,"ma200":57556.08,"rsi":25.6,"atr_pct":3.374},{"date":"2024-06-25","close":61806.01,"ma200":57644.26,"rsi":34.1,"atr_pct":3.307},{"date":"2024-06-26","close":60864.99,"ma200":57730.01,"rsi":31.68,"atr_pct":3.326},{"date":"2024-06-27","close":61706.47,"ma200":57819.6,"rsi":36.05,"atr_pct":3.253},{"date":"2024-06-28","close":60427.84,"ma200":57915.47,"rsi":32.63,"atr_pct":3.34},{"date":"2024-06-29","close":60986.68,"ma200":58012.94,"rsi":35.51,"atr_pct":3.172},{"date":"2024-06-30","close":62772.01,"ma200":58112.46,"rsi":43.78,"atr_pct":3.128},{"date":"2024-07-01","close":62899.99,"ma200":58211.84,"rsi":44.33,"atr_pct":3.054},{"date":"2024-07-02","close":62135.47,"ma200":58312.82,"rsi":41.7,"atr_pct":3.041},{"date":"2024-07-03","close":60208.58,"ma200":58402.47,"rsi":35.92,"atr_pct":3.257},{"date":"2024-07-04","close":57050.01,"ma200":58480.85,"rsi":28.86,"atr_pct":3.658},{"date":"2024-07-05","close":56628.79,"ma200":58550.7,"rsi":28.06,"atr_pct":3.934},{"date":"2024-07-06","close":58230.13,"ma200":58630.48,"rsi":35.34,"atr_pct":3.854},{"date":"2024-07-07","close":55857.81,"ma200":58691.42,"rsi":30.43,"atr_pct":4.079},{"date":"2024-07-08","close":56714.62,"ma200":58755.68,"rsi":33.99,"atr_pct":4.231},{"date":"2024-07-09","close":58050.0,"ma200":58826.09,"rsi":39.22,"atr_pct":4.086},{"date":"2024-07-10","close":57725.85,"ma200":58896.21,"rsi":38.43,"atr_pct":4.101},{"date":"2024-07-11","close":57339.89,"ma200":58967.95,"rsi":37.45,"atr_pct":4.158},{"date":"2024-07-12","close":57889.1,"ma200":59039.51,"rsi":39.79,"atr_pct":4.069},{"date":"2024-07-13","close":59204.02,"ma200":59122.99,"rsi":45.09,"atr_pct":3.947},{"date":"2024-07-14","close":60797.91,"ma200":59209.83,"rsi":50.74,"atr_pct":3.831},{"date":"2024-07-15","close":64724.14,"ma200":59320.64,"rsi":61.31,"atr_pct":3.812},{"date":"2024-07-16","close":65043.99,"ma200":59435.52,"rsi":62.02,"atr_pct":3.854},{"date":"2024-07-17","close":64087.99,"ma200":59545.26,"rsi":58.54,"atr_pct":3.885},{"date":"2024-07-18","close":63987.92,"ma200":59653.78,"rsi":58.17,"atr_pct":3.825},{"date":"2024-07-19","close":66660.0,"ma200":59766.18,"rsi":64.58,"atr_pct":3.847},{"date":"2024-07-20","close":67139.96,"ma200":59877.15,"rsi":65.6,"atr_pct":3.693},{"date":"2024-07-21","close":68165.34,"ma200":60003.75,"rsi":67.73,"atr_pct":3.649},{"date":"2024-07-22","close":67532.01,"ma200":60120.65,"rsi":65.05,"atr_pct":3.623},{"date":"2024-07-23","close":65936.01,"ma200":60229.61,"rsi":58.73,"atr_pct":3.696},{"date":"2024-07-24","close":65376.0,"ma200":60336.65,"rsi":56.65,"atr_pct":3.679},{"date":"2024-07-25","close":65799.95,"ma200":60446.0,"rsi":57.86,"atr_pct":3.689},{"date":"2024-07-26","close":67907.99,"ma200":60550.79,"rsi":63.37,"atr_pct":3.58},{"date":"2024-07-27","close":67896.5,"ma200":60659.72,"rsi":63.32,"atr_pct":3.614},{"date":"2024-07-28","close":68249.88,"ma200":60767.7,"rsi":64.23,"atr_pct":3.469},{"date":"2024-07-29","close":66784.69,"ma200":60869.93,"rsi":57.84,"atr_pct":3.683},{"date":"2024-07-30","close":66188.0,"ma200":60986.95,"rsi":55.42,"atr_pct":3.634},{"date":"2024-07-31","close":64628.0,"ma200":61095.85,"rsi":49.58,"atr_pct":3.712},{"date":"2024-08-01","close":65354.02,"ma200":61213.96,"rsi":52.11,"atr_pct":3.776},{"date":"2024-08-02","close":61498.33,"ma200":61308.9,"rsi":40.49,"atr_pct":4.233},{"date":"2024-08-03","close":60697.99,"ma200":61396.7,"rsi":38.57,"atr_pct":4.259},{"date":"2024-08-04","close":58161.0,"ma200":61473.62,"rsi":33.19,"atr_pct":4.618},{"date":"2024-08-05","close":54018.81,"ma200":61537.08,"rsi":26.66,"atr_pct":5.847},{"date":"2024-08-06","close":56022.01,"ma200":61608.89,"rsi":33.48,"atr_pct":5.629},{"date":"2024-08-07","close":55134.16,"ma200":61676.08,"rsi":32.06,"atr_pct":5.723},{"date":"2024-08-08","close":61685.99,"ma200":61776.61,"rsi":49.21,"atr_pct":5.678},{"date":"2024-08-09","close":60837.99,"ma200":61882.96,"rsi":47.54,"atr_pct":5.605},{"date":"2024-08-10","close":60923.51,"ma200":61988.09,"rsi":47.73,"atr_pct":5.342},{"date":"2024-08-11","close":58712.59,"ma200":62081.23,"rsi":43.3,"atr_pct":5.581},{"date":"2024-08-12","close":59346.64,"ma200":62178.16,"rsi":44.88,"atr_pct":5.497},{"date":"2024-08-13","close":60587.15,"ma200":62271.98,"rsi":47.94,"atr_pct":5.375},{"date":"2024-08-14","close":58683.39,"ma200":62354.79,"rsi":43.91,"atr_pct":5.563},{"date":"2024-08-15","close":57541.06,"ma200":62432.34,"rsi":41.65,"atr_pct":5.736},{"date":"2024-08-16","close":58874.6,"ma200":62510.2,"rsi":45.2,"atr_pct":5.536},{"date":"2024-08-17","close":59491.99,"ma200":62592.95,"rsi":46.81,"atr_pct":5.197},{"date":"2024-08-18","close":58427.35,"ma200":62672.19,"rsi":44.38,"atr_pct":5.143},{"date":"2024-08-19","close":59438.5,"ma200":62753.97,"rsi":47.18,"atr_pct":4.914},{"date":"2024-08-20","close":59013.8,"ma200":62833.04,"rsi":46.13,"atr_pct":4.941},{"date":"2024-08-21","close":61156.03,"ma200":62923.76,"rsi":51.94,"atr_pct":4.782},{"date":"2024-08-22","close":60375.84,"ma200":63012.73,"rsi":49.84,"atr_pct":4.696},{"date":"2024-08-23","close":64037.24,"ma200":63119.37,"rsi":58.38,"atr_pct":4.626},{"date":"2024-08-24","close":64157.01,"ma200":63224.66,"rsi":58.62,"atr_pct":4.395},{"date":"2024-08-25","close":64220.0,"ma200":63324.01,"rsi":58.76,"atr_pct":4.213},{"date":"2024-08-26","close":62834.0,"ma200":63411.74,"rsi":54.42,"atr_pct":4.19},{"date":"2024-08-27","close":59415.0,"ma200":63473.15,"rsi":45.5,"atr_pct":4.737},{"date":"2024-08-28","close":59034.9,"ma200":63529.57,"rsi":44.62,"atr_pct":4.714},{"date":"2024-08-29","close":59359.01,"ma200":63584.86,"rsi":45.58,"atr_pct":4.649},{"date":"2024-08-30","close":59123.99,"ma200":63630.9,"rsi":44.97,"atr_pct":4.605},{"date":"2024-08-31","close":58973.99,"ma200":63677.27,"rsi":44.56,"atr_pct":4.374},{"date":"2024-09-01","close":57301.86,"ma200":63704.8,"rsi":40.17,"atr_pct":4.414},{"date":"2024-09-02","close":59132.13,"ma200":63741.06,"rsi":46.4,"atr_pct":4.249},{"date":"2024-09-03","close":57487.73,"ma200":63767.88,"rsi":42.15,"atr_pct":4.356},{"date":"2024-09-04","close":57970.9,"ma200":63799.52,"rsi":43.78,"atr_pct":4.37},{"date":"2024-09-05","close":56180.0,"ma200":63819.73,"rsi":39.36,"atr_pct":4.529},{"date":"2024-09-06","close":53962.97,"ma200":63830.68,"rsi":34.68,"atr_pct":4.968},{"date":"2024-09-07","close":54160.86,"ma200":63840.19,"rsi":35.42,"atr_pct":4.742},{"date":"2024-09-08","close":54869.95,"ma200":63855.29,"rsi":38.12,"atr_pct":4.566},{"date":"2024-09-09","close":57042.0,"ma200":63884.06,"rsi":45.6,"atr_pct":4.516},{"date":"2024-09-10","close":57635.99,"ma200":63918.52,"rsi":47.47,"atr_pct":4.356},{"date":"2024-09-11","close":57338.0,"ma200":63947.37,"rsi":46.61,"atr_pct":4.369},{"date":"2024-09-12","close":58132.32,"ma200":63979.38,"rsi":49.27,"atr_pct":4.157},{"date":"2024-09-13","close":60498.0,"ma200":64009.49,"rsi":56.25,"atr_pct":4.063},{"date":"2024-09-14","close":59993.03,"ma200":64024.27,"rsi":54.52,"atr_pct":3.948},{"date":"2024-09-15","close":59132.0,"ma200":64007.77,"rsi":51.62,"atr_pct":3.926},{"date":"2024-09-16","close":58213.99,"ma200":63993.18,"rsi":48.64,"atr_pct":3.913},{"date":"2024-09-17","close":60313.99,"ma200":63982.81,"rsi":55.03,"atr_pct":3.947},{"date":"2024-09-18","close":61759.99,"ma200":63981.68,"rsi":58.83,"atr_pct":3.881},{"date":"2024-09-19","close":62947.99,"ma200":63980.85,"rsi":61.69,"atr_pct":3.796},{"date":"2024-09-20","close":63201.05,"ma200":63955.62,"rsi":62.3,"atr_pct":3.712},{"date":"2024-09-21","close":63348.96,"ma200":63953.75,"rsi":62.66,"atr_pct":3.53},{"date":"2024-09-22","close":63578.76,"ma200":63941.27,"rsi":63.27,"atr_pct":3.45},{"date":"2024-09-23","close":63339.99,"ma200":63923.86,"rsi":62.15,"atr_pct":3.465},{"date":"2024-09-24","close":64262.7,"ma200":63904.55,"rsi":64.74,"atr_pct":3.392},{"date":"2024-09-25","close":63152.01,"ma200":63878.74,"rsi":59.45,"atr_pct":3.417},{"date":"2024-09-26","close":65173.99,"ma200":63859.83,"rsi":65.05,"atr_pct":3.422},{"date":"2024-09-27","close":65769.95,"ma200":63828.29,"rsi":66.52,"atr_pct":3.331},{"date":"2024-09-28","close":65858.0,"ma200":63800.32,"rsi":66.74,"atr_pct":3.179},{"date":"2024-09-29","close":65602.01,"ma200":63762.97,"rsi":65.38,"atr_pct":3.034},{"date":"2024-09-30","close":63327.59,"ma200":63722.66,"rsi":54.72,"atr_pct":3.23},{"date":"2024-10-01","close":60805.78,"ma200":63679.19,"rsi":45.81,"atr_pct":3.59},{"date":"2024-10-02","close":60649.28,"ma200":63655.94,"rsi":45.31,"atr_pct":3.623},{"date":"2024-10-03","close":60752.71,"ma200":63617.73,"rsi":45.73,"atr_pct":3.553},{"date":"2024-10-04","close":62086.0,"ma200":63590.11,"rsi":50.91,"atr_pct":3.461},{"date":"2024-10-05","close":62058.0,"ma200":63590.72,"rsi":50.81,"atr_pct":3.294},{"date":"2024-10-06","close":62819.91,"ma200":63565.61,"rsi":53.73,"atr_pct":3.155},{"date":"2024-10-07","close":62224.0,"ma200":63549.23,"rsi":51.17,"atr_pct":3.228},{"date":"2024-10-08","close":62160.49,"ma200":63541.05,"rsi":50.89,"atr_pct":3.154},{"date":"2024-10-09","close":60636.02,"ma200":63524.28,"rsi":44.61,"atr_pct":3.267},{"date":"2024-10-10","close":60326.39,"ma200":63489.86,"rsi":43.44,"atr_pct":3.33},{"date":"2024-10-11","close":62540.0,"ma200":63453.16,"rsi":52.95,"atr_pct":3.363},{"date":"2024-10-12","close":63206.22,"ma200":63419.25,"rsi":55.39,"atr_pct":3.202},{"date":"2024-10-13","close":62870.02,"ma200":63386.25,"rsi":53.87,"atr_pct":3.13},{"date":"2024-10-14","close":66083.99,"ma200":63362.77,"rsi":64.0,"atr_pct":3.202},{"date":"2024-10-15","close":67074.14,"ma200":63348.88,"rsi":66.45,"atr_pct":3.265},{"date":"2024-10-16","close":67620.01,"ma200":63339.07,"rsi":67.75,"atr_pct":3.184},{"date":"2024-10-17","close":67421.78,"ma200":63319.78,"rsi":66.73,"atr_pct":3.1},{"date":"2024-10-18","close":68428.0,"ma200":63313.67,"rsi":69.24,"atr_pct":3.025},{"date":"2024-10-19","close":68378.0,"ma200":63328.24,"rsi":68.97,"atr_pct":2.882},{"date":"2024-10-20","close":69031.99,"ma200":63343.59,"rsi":70.63,"atr_pct":2.786},{"date":"2024-10-21","close":67377.5,"ma200":63338.04,"rsi":61.63,"atr_pct":2.934},{"date":"2024-10-22","close":67426.0,"ma200":63336.06,"rsi":61.78,"atr_pct":2.856},{"date":"2024-10-23","close":66668.65,"ma200":63324.93,"rsi":57.88,"atr_pct":2.92},{"date":"2024-10-24","close":68198.28,"ma200":63319.11,"rsi":62.97,"atr_pct":2.895},{"date":"2024-10-25","close":66698.33,"ma200":63294.51,"rsi":55.85,"atr_pct":3.089},{"date":"2024-10-26","close":67092.76,"ma200":63284.24,"rsi":57.22,"atr_pct":2.96},{"date":"2024-10-27","close":68021.7,"ma200":63271.19,"rsi":60.34,"atr_pct":2.86},{"date":"2024-10-28","close":69962.21,"ma200":63270.97,"rsi":65.93,"atr_pct":2.852},{"date":"2024-10-29","close":72736.42,"ma200":63299.07,"rsi":72.01,"atr_pct":2.927},{"date":"2024-10-30","close":72344.74,"ma200":63341.17,"rsi":70.11,"atr_pct":2.883},{"date":"2024-10-31","close":70292.01,"ma200":63364.32,"rsi":61.01,"atr_pct":3.062},{"date":"2024-11-01","close":69496.01,"ma200":63394.7,"rsi":57.88,"atr_pct":3.165},{"date":"2024-11-02","close":69374.74,"ma200":63422.61,"rsi":57.4,"atr_pct":3.038},{"date":"2024-11-03","close":68775.99,"ma200":63460.1,"rsi":54.95,"atr_pct":3.044},{"date":"2024-11-04","close":67850.01,"ma200":63482.0,"rsi":51.32,"atr_pct":3.146},{"date":"2024-11-05","close":69372.01,"ma200":63509.77,"rsi":56.42,"atr_pct":3.176},{"date":"2024-11-06","close":75571.99,"ma200":63562.93,"rsi":70.15,"atr_pct":3.379},{"date":"2024-11-07","close":75857.89,"ma200":63617.51,"rsi":70.61,"atr_pct":3.355},{"date":"2024-11-08","close":76509.78,"ma200":63665.97,"rsi":71.68,"atr_pct":3.242},{"date":"2024-11-09","close":76677.46,"ma200":63717.28,"rsi":71.97,"atr_pct":3.114},{"date":"2024-11-10","close":80370.01,"ma200":63797.69,"rsi":77.34,"atr_pct":3.204},{"date":"2024-11-11","close":88647.99,"ma200":63918.43,"rsi":84.51,"atr_pct":3.448},{"date":"2024-11-12","close":87952.01,"ma200":64039.34,"rsi":82.15,"atr_pct":3.622},{"date":"2024-11-13","close":90375.2,"ma200":64173.91,"rsi":83.84,"atr_pct":3.838},{"date":"2024-11-14","close":87325.59,"ma200":64294.95,"rsi":74.32,"atr_pct":4.107},{"date":"2024-11-15","close":91032.07,"ma200":64430.78,"rsi":77.64,"atr_pct":4.033},{"date":"2024-11-16","close":90586.92,"ma200":64580.35,"rsi":76.36,"atr_pct":3.899},{"date":"2024-11-17","close":89855.99,"ma200":64737.81,"rsi":74.2,"atr_pct":3.867},{"date":"2024-11-18","close":90464.08,"ma200":64894.82,"rsi":74.84,"atr_pct":3.821},{"date":"2024-11-19","close":92310.79,"ma200":65041.97,"rsi":76.72,"atr_pct":3.751},{"date":"2024-11-20","close":94286.56,"ma200":65193.94,"rsi":78.57,"atr_pct":3.663},{"date":"2024-11-21","close":98317.12,"ma200":65365.47,"rsi":81.75,"atr_pct":3.621},{"date":"2024-11-22","close":98892.0,"ma200":65544.1,"rsi":82.16,"atr_pct":3.521},{"date":"2024-11-23","close":97672.4,"ma200":65720.9,"rsi":78.18,"atr_pct":3.44},{"date":"2024-11-24","close":97900.04,"ma200":65904.44,"rsi":78.39,"atr_pct":3.393},{"date":"2024-11-25","close":93010.01,"ma200":66054.12,"rsi":64.09,"atr_pct":3.798},{"date":"2024-11-26","close":91965.16,"ma200":66209.94,"rsi":61.5,"atr_pct":3.892},{"date":"2024-11-27","close":95863.11,"ma200":66385.13,"rsi":66.87,"atr_pct":3.871},{"date":"2024-11-28","close":95643.98,"ma200":66555.93,"rsi":66.31,"atr_pct":3.746},{"date":"2024-11-29","close":97460.0,"ma200":66728.53,"rsi":68.65,"atr_pct":3.652},{"date":"2024-11-30","close":96407.99,"ma200":66902.68,"rsi":65.8,"atr_pct":3.53},{"date":"2024-12-01","close":97185.18,"ma200":67057.57,"rsi":66.89,"atr_pct":3.409},{"date":"2024-12-02","close":95840.62,"ma200":67210.6,"rsi":63.13,"atr_pct":3.488},{"date":"2024-12-03","close":95849.69,"ma200":67354.73,"rsi":63.14,"atr_pct":3.442},{"date":"2024-12-04","close":98587.32,"ma200":67513.09,"rsi":67.46,"atr_pct":3.427},{"date":"2024-12-05","close":96945.63,"ma200":67666.45,"rsi":62.72,"atr_pct":4.237},{"date":"2024-12-06","close":99740.84,"ma200":67807.92,"rsi":66.98,"atr_pct":4.248},{"date":"2024-12-07","close":99831.99,"ma200":67956.34,"rsi":67.11,"atr_pct":4.055},{"date":"2024-12-08","close":101109.59,"ma200":68116.05,"rsi":68.98,"atr_pct":3.908},{"date":"2024-12-09","close":97276.47,"ma200":68262.59,"rsi":58.27,"atr_pct":4.291},{"date":"2024-12-10","close":96593.0,"ma200":68402.8,"rsi":56.58,"atr_pct":4.309},{"date":"2024-12-11","close":101125.0,"ma200":68561.97,"rsi":64.02,"atr_pct":4.262},{"date":"2024-12-12","close":100004.29,"ma200":68719.46,"rsi":61.23,"atr_pct":4.233},{"date":"2024-12-13","close":101424.25,"ma200":68879.39,"rsi":63.41,"atr_pct":4.065},{"date":"2024-12-14","close":101420.0,"ma200":69044.5,"rsi":63.39,"atr_pct":3.918},{"date":"2024-12-15","close":104463.99,"ma200":69228.56,"rsi":67.88,"atr_pct":3.807},{"date":"2024-12-16","close":106058.66,"ma200":69417.09,"rsi":69.96,"atr_pct":3.782},{"date":"2024-12-17","close":106133.74,"ma200":69610.06,"rsi":70.06,"atr_pct":3.714},{"date":"2024-12-18","close":100204.01,"ma200":69772.25,"rsi":54.82,"atr_pct":4.118},{"date":"2024-12-19","close":97461.86,"ma200":69920.73,"rsi":49.46,"atr_pct":4.451},{"date":"2024-12-20","close":97805.44,"ma200":70065.71,"rsi":50.12,"atr_pct":4.557},{"date":"2024-12-21","close":97291.99,"ma200":70199.48,"rsi":49.09,"atr_pct":4.485},{"date":"2024-12-22","close":95186.27,"ma200":70319.87,"rsi":45.01,"atr_pct":4.496},{"date":"2024-12-23","close":94881.47,"ma200":70440.28,"rsi":44.43,"atr_pct":4.491},{"date":"2024-12-24","close":98663.58,"ma200":70586.82,"rsi":52.54,"atr_pct":4.439},{"date":"2024-12-25","close":99429.6,"ma200":70737.42,"rsi":54.01,"atr_pct":4.229},{"date":"2024-12-26","close":95791.6,"ma200":70868.13,"rsi":46.65,"atr_pct":4.432},{"date":"2024-12-27","close":94299.03,"ma200":70991.93,"rsi":44.0,"atr_pct":4.487},{"date":"2024-12-28","close":95300.0,"ma200":71131.86,"rsi":46.2,"atr_pct":4.242},{"date":"2024-12-29","close":93738.2,"ma200":71259.23,"rsi":43.33,"atr_pct":4.182},{"date":"2024-12-30","close":92792.05,"ma200":71389.32,"rsi":41.65,"atr_pct":4.192},{"date":"2024-12-31","close":93576.0,"ma200":71526.98,"rsi":43.61,"atr_pct":4.182},{"date":"2025-01-01","close":94591.79,"ma200":71668.8,"rsi":46.13,"atr_pct":4.012},{"date":"2025-01-02","close":96984.79,"ma200":71820.34,"rsi":51.62,"atr_pct":3.888},{"date":"2025-01-03","close":98174.18,"ma200":71978.69,"rsi":54.13,"atr_pct":3.776},{"date":"2025-01-04","close":98220.5,"ma200":72143.92,"rsi":54.23,"atr_pct":3.596},{"date":"2025-01-05","close":98363.61,"ma200":72310.86,"rsi":54.55,"atr_pct":3.448},{"date":"2025-01-06","close":102235.6,"ma200":72497.69,"rsi":62.39,"atr_pct":3.399},{"date":"2025-01-07","close":96954.61,"ma200":72661.75,"rsi":49.78,"atr_pct":3.81},{"date":"2025-01-08","close":95060.61,"ma200":72815.74,"rsi":46.17,"atr_pct":3.967},{"date":"2025-01-09","close":92552.49,"ma200":72962.45,"rsi":41.85,"atr_pct":4.106},{"date":"2025-01-10","close":94726.11,"ma200":73134.62,"rsi":46.52,"atr_pct":3.999},{"date":"2025-01-11","close":94599.99,"ma200":73298.59,"rsi":46.29,"atr_pct":3.81},{"date":"2025-01-12","close":94545.06,"ma200":73466.99,"rsi":46.18,"atr_pct":3.671},{"date":"2025-01-13","close":94536.1,"ma200":73631.13,"rsi":46.16,"atr_pct":3.914},{"date":"2025-01-14","close":96560.86,"ma200":73811.8,"rsi":51.05,"atr_pct":3.782},{"date":"2025-01-15","close":100497.35,"ma200":74009.35,"rsi":58.87,"atr_pct":3.672},{"date":"2025-01-16","close":99987.3,"ma200":74195.43,"rsi":57.59,"atr_pct":3.679},{"date":"2025-01-17","close":104077.48,"ma200":74401.32,"rsi":64.31,"atr_pct":3.688},{"date":"2025-01-18","close":104556.23,"ma200":74613.42,"rsi":65.01,"atr_pct":3.594},{"date":"2025-01-19","close":101331.57,"ma200":74819.03,"rsi":56.92,"atr_pct":3.921},{"date":"2025-01-20","close":102260.01,"ma200":75045.08,"rsi":58.52,"atr_pct":4.309},{"date":"2025-01-21","close":106143.82,"ma200":75292.66,"rsi":64.47,"atr_pct":4.334},{"date":"2025-01-22","close":103706.66,"ma200":75520.04,"rsi":58.78,"atr_pct":4.329},{"date":"2025-01-23","close":103910.34,"ma200":75760.31,"rsi":59.1,"atr_pct":4.396},{"date":"2025-01-24","close":104870.5,"ma200":76001.08,"rsi":60.67,"atr_pct":4.343},{"date":"2025-01-25","close":104746.85,"ma200":76234.57,"rsi":60.35,"atr_pct":4.118},{"date":"2025-01-26","close":102620.0,"ma200":76459.04,"rsi":54.95,"atr_pct":4.11},{"date":"2025-01-27","close":102082.83,"ma200":76682.75,"rsi":53.64,"atr_pct":4.22},{"date":"2025-01-28","close":101335.52,"ma200":76899.99,"rsi":51.8,"atr_pct":4.196},{"date":"2025-01-29","close":103733.24,"ma200":77122.63,"rsi":56.92,"atr_pct":4.044},{"date":"2025-01-30","close":104722.94,"ma200":77342.26,"rsi":58.86,"atr_pct":3.937},{"date":"2025-01-31","close":102429.56,"ma200":77530.78,"rsi":52.91,"atr_pct":4.048},{"date":"2025-02-01","close":100635.65,"ma200":77708.74,"rsi":48.75,"atr_pct":4.004},{"date":"2025-02-02","close":97700.59,"ma200":77876.81,"rsi":42.83,"atr_pct":4.217},{"date":"2025-02-03","close":101328.52,"ma200":78063.51,"rsi":50.79,"atr_pct":4.57},{"date":"2025-02-04","close":97763.13,"ma200":78219.02,"rsi":44.27,"atr_pct":4.806},{"date":"2025-02-05","close":96612.43,"ma200":78366.39,"rsi":42.37,"atr_pct":4.738},{"date":"2025-02-06","close":96554.35,"ma200":78508.33,"rsi":42.28,"atr_pct":4.657},{"date":"2025-02-07","close":96506.8,"ma200":78653.21,"rsi":42.19,"atr_pct":4.66},{"date":"2025-02-08","close":96444.74,"ma200":78805.75,"rsi":42.07,"atr_pct":4.419},{"date":"2025-02-09","close":96462.75,"ma200":78961.18,"rsi":42.12,"atr_pct":4.296},{"date":"2025-02-10","close":97430.82,"ma200":79119.34,"rsi":44.96,"atr_pct":4.176},{"date":"2025-02-11","close":95778.2,"ma200":79258.69,"rsi":41.24,"atr_pct":4.213},{"date":"2025-02-12","close":97869.99,"ma200":79408.56,"rsi":47.2,"atr_pct":4.123},{"date":"2025-02-13","close":96608.14,"ma200":79550.35,"rsi":44.28,"atr_pct":4.09},{"date":"2025-02-14","close":97500.48,"ma200":79703.93,"rsi":46.79,"atr_pct":3.952},{"date":"2025-02-15","close":97569.66,"ma200":79860.83,"rsi":46.99,"atr_pct":3.722},{"date":"2025-02-16","close":96118.12,"ma200":80018.29,"rsi":43.32,"atr_pct":3.631},{"date":"2025-02-17","close":95780.0,"ma200":80170.42,"rsi":42.49,"atr_pct":3.521},{"date":"2025-02-18","close":95671.74,"ma200":80341.28,"rsi":42.21,"atr_pct":3.525},{"date":"2025-02-19","close":96644.37,"ma200":80521.01,"rsi":45.67,"atr_pct":3.378},{"date":"2025-02-20","close":98305.0,"ma200":80721.73,"rsi":51.05,"atr_pct":3.251},{"date":"2025-02-21","close":96181.98,"ma200":80932.55,"rsi":44.92,"atr_pct":3.427},{"date":"2025-02-22","close":96551.01,"ma200":81135.2,"rsi":46.13,"atr_pct":3.259},{"date":"2025-02-23","close":96258.0,"ma200":81340.81,"rsi":45.28,"atr_pct":3.141},{"date":"2025-02-24","close":91552.88,"ma200":81490.15,"rsi":34.34,"atr_pct":3.469},{"date":"2025-02-25","close":88680.4,"ma200":81629.36,"rsi":29.63,"atr_pct":3.848},{"date":"2025-02-26","close":84250.09,"ma200":81745.99,"rsi":24.13,"atr_pct":4.368},{"date":"2025-02-27","close":84708.58,"ma200":81875.97,"rsi":25.67,"atr_pct":4.402},{"date":"2025-02-28","close":84349.94,"ma200":82000.99,"rsi":25.24,"atr_pct":4.686},{"date":"2025-03-01","close":86064.53,"ma200":82128.38,"rsi":31.18,"atr_pct":4.491},{"date":"2025-03-02","close":94270.0,"ma200":82306.31,"rsi":51.19,"atr_pct":4.561},{"date":"2025-03-03","close":86220.61,"ma200":82449.71,"rsi":39.16,"atr_pct":5.401},{"date":"2025-03-04","close":87281.98,"ma200":82591.74,"rsi":41.12,"atr_pct":5.566},{"date":"2025-03-05","close":90606.01,"ma200":82747.31,"rsi":46.91,"atr_pct":5.346},{"date":"2025-03-06","close":89931.89,"ma200":82904.84,"rsi":45.92,"atr_pct":5.397},{"date":"2025-03-07","close":86801.75,"ma200":83041.65,"rsi":41.56,"atr_pct":5.736},{"date":"2025-03-08","close":86222.45,"ma200":83177.7,"rsi":40.79,"atr_pct":5.502},{"date":"2025-03-09","close":80734.37,"ma200":83275.59,"rsi":34.29,"atr_pct":6.031},{"date":"2025-03-10","close":78595.86,"ma200":83366.69,"rsi":32.14,"atr_pct":6.358},{"date":"2025-03-11","close":82932.99,"ma200":83461.17,"rsi":40.31,"atr_pct":6.199},{"date":"2025-03-12","close":83680.12,"ma200":83558.78,"rsi":41.61,"atr_pct":6.041},{"date":"2025-03-13","close":81115.78,"ma200":83643.26,"rsi":38.5,"atr_pct":6.174},{"date":"2025-03-14","close":83983.2,"ma200":83749.01,"rsi":43.58,"atr_pct":5.919},{"date":"2025-03-15","close":84338.44,"ma200":83873.63,"rsi":44.2,"atr_pct":5.562},{"date":"2025-03-16","close":82574.53,"ma200":83991.32,"rsi":41.76,"atr_pct":5.547},{"date":"2025-03-17","close":84010.03,"ma200":84114.58,"rsi":44.44,"atr_pct":5.258},{"date":"2025-03-18","close":82715.03,"ma200":84232.53,"rsi":42.54,"atr_pct":5.208},{"date":"2025-03-19","close":86845.94,"ma200":84371.89,"rsi":49.91,"atr_pct":4.973},{"date":"2025-03-20","close":84223.39,"ma200":84506.5,"rsi":45.89,"atr_pct":5.083},{"date":"2025-03-21","close":84088.79,"ma200":84631.28,"rsi":45.68,"atr_pct":4.87},{"date":"2025-03-22","close":83840.59,"ma200":84763.05,"rsi":45.28,"atr_pct":4.613},{"date":"2025-03-23","close":86082.5,"ma200":84903.61,"rsi":49.57,"atr_pct":4.365},{"date":"2025-03-24","close":87498.16,"ma200":85060.2,"rsi":52.11,"atr_pct":4.252},{"date":"2025-03-25","close":87392.87,"ma200":85227.35,"rsi":51.9,"atr_pct":4.136},{"date":"2025-03-26","close":86909.17,"ma200":85391.09,"rsi":50.89,"atr_pct":4.06},{"date":"2025-03-27","close":87232.01,"ma200":85552.9,"rsi":51.57,"atr_pct":3.916},{"date":"2025-03-28","close":84424.38,"ma200":85689.81,"rsi":45.64,"atr_pct":4.09},{"date":"2025-03-29","close":82648.54,"ma200":85814.87,"rsi":42.33,"atr_pct":4.137},{"date":"2025-03-30","close":82389.99,"ma200":85940.13,"rsi":41.86,"atr_pct":4.024},{"date":"2025-03-31","close":82550.01,"ma200":86062.22,"rsi":42.29,"atr_pct":3.96},{"date":"2025-04-01","close":85158.34,"ma200":86185.52,"rsi":48.96,"atr_pct":3.829},{"date":"2025-04-02","close":82516.29,"ma200":86298.14,"rsi":43.48,"atr_pct":4.204},{"date":"2025-04-03","close":83213.09,"ma200":86418.55,"rsi":45.22,"atr_pct":4.11},{"date":"2025-04-04","close":83889.87,"ma200":86546.92,"rsi":46.93,"atr_pct":4.047},{"date":"2025-04-05","close":83537.99,"ma200":86663.04,"rsi":46.12,"atr_pct":3.935},{"date":"2025-04-06","close":78430.0,"ma200":86746.39,"rsi":36.36,"atr_pct":4.498},{"date":"2025-04-07","close":79163.24,"ma200":86827.47,"rsi":38.37,"atr_pct":4.746},{"date":"2025-04-08","close":76322.42,"ma200":86893.08,"rsi":33.89,"atr_pct":5.004},{"date":"2025-04-09","close":82615.22,"ma200":86989.41,"rsi":48.3,"atr_pct":5.068},{"date":"2025-04-10","close":79607.3,"ma200":87069.55,"rsi":43.43,"atr_pct":5.269},{"date":"2025-04-11","close":83423.84,"ma200":87169.97,"rsi":50.28,"atr_pct":5.125},{"date":"2025-04-12","close":85276.9,"ma200":87275.04,"rsi":53.24,"atr_pct":4.916},{"date":"2025-04-13","close":83760.0,"ma200":87378.08,"rsi":50.58,"atr_pct":4.909},{"date":"2025-04-14","close":84591.58,"ma200":87475.17,"rsi":52.0,"atr_pct":4.693},{"date":"2025-04-15","close":83643.99,"ma200":87564.54,"rsi":50.23,"atr_pct":4.654},{"date":"2025-04-16","close":84030.38,"ma200":87655.4,"rsi":50.97,"atr_pct":4.505},{"date":"2025-04-17","close":84947.91,"ma200":87752.13,"rsi":52.74,"atr_pct":4.284},{"date":"2025-04-18","close":84474.69,"ma200":87857.87,"rsi":51.7,"atr_pct":4.07},{"date":"2025-04-19","close":85077.01,"ma200":87979.22,"rsi":52.97,"atr_pct":3.863},{"date":"2025-04-20","close":85179.24,"ma200":88101.87,"rsi":53.19,"atr_pct":3.698},{"date":"2025-04-21","close":87516.23,"ma200":88235.69,"rsi":58.12,"atr_pct":3.613},{"date":"2025-04-22","close":93442.99,"ma200":88392.48,"rsi":67.48,"atr_pct":3.663},{"date":"2025-04-23","close":93691.08,"ma200":88550.64,"rsi":67.8,"atr_pct":3.603},{"date":"2025-04-24","close":93980.47,"ma200":88706.44,"rsi":68.2,"atr_pct":3.513},{"date":"2025-04-25","close":94638.68,"ma200":88868.52,"rsi":69.14,"atr_pct":3.459},{"date":"2025-04-26","close":94628.0,"ma200":89030.85,"rsi":69.1,"atr_pct":3.312},{"date":"2025-04-27","close":93749.3,"ma200":89196.42,"rsi":66.09,"atr_pct":3.239},{"date":"2025-04-28","close":95011.18,"ma200":89369.85,"rsi":68.23,"atr_pct":3.181},{"date":"2025-04-29","close":94256.82,"ma200":89528.43,"rsi":65.57,"atr_pct":3.107},{"date":"2025-04-30","close":94172.0,"ma200":89683.26,"rsi":65.26,"atr_pct":3.064},{"date":"2025-05-01","close":96489.91,"ma200":89851.36,"rsi":69.48,"atr_pct":3.02},{"date":"2025-05-02","close":96887.14,"ma200":90005.37,"rsi":70.15,"atr_pct":2.907},{"date":"2025-05-03","close":95856.42,"ma200":90149.28,"rsi":66.1,"atr_pct":2.817},{"date":"2025-05-04","close":94277.62,"ma200":90282.57,"rsi":60.35,"atr_pct":2.822},{"date":"2025-05-05","close":94733.68,"ma200":90419.13,"rsi":61.39,"atr_pct":2.735},{"date":"2025-05-06","close":96834.02,"ma200":90561.16,"rsi":65.86,"atr_pct":2.746},{"date":"2025-05-07","close":97030.5,"ma200":90704.42,"rsi":66.25,"atr_pct":2.688},{"date":"2025-05-08","close":103261.6,"ma200":90875.57,"rsi":75.78,"atr_pct":2.848},{"date":"2025-05-09","close":102971.99,"ma200":91053.55,"rsi":74.72,"atr_pct":2.794},{"date":"2025-05-10","close":104809.53,"ma200":91240.46,"rsi":76.92,"atr_pct":2.697},{"date":"2025-05-11","close":104118.0,"ma200":91427.71,"rsi":74.3,"atr_pct":2.632},{"date":"2025-05-12","close":102791.32,"ma200":91600.67,"rsi":69.42,"atr_pct":2.83},{"date":"2025-05-13","close":104103.72,"ma200":91787.7,"rsi":71.42,"atr_pct":2.838},{"date":"2025-05-14","close":103507.82,"ma200":91969.78,"rsi":69.21,"atr_pct":2.772},{"date":"2025-05-15","close":103763.71,"ma200":92148.49,"rsi":69.64,"atr_pct":2.761},{"date":"2025-05-16","close":103463.9,"ma200":92316.0,"rsi":68.42,"atr_pct":2.671},{"date":"2025-05-17","close":103126.65,"ma200":92467.95,"rsi":67.0,"atr_pct":2.565},{"date":"2025-05-18","close":106454.26,"ma200":92638.49,"rsi":72.97,"atr_pct":2.546},{"date":"2025-05-19","close":105573.74,"ma200":92814.9,"rsi":69.39,"atr_pct":2.729},{"date":"2025-05-20","close":106849.99,"ma200":93001.67,"rsi":71.57,"atr_pct":2.713},{"date":"2025-05-21","close":109643.99,"ma200":93203.02,"rsi":75.65,"atr_pct":2.761},{"date":"2025-05-22","close":111696.21,"ma200":93417.62,"rsi":78.13,"atr_pct":2.696},{"date":"2025-05-23","close":107318.3,"ma200":93614.96,"rsi":63.31,"atr_pct":2.939},{"date":"2025-05-24","close":107761.91,"ma200":93806.91,"rsi":64.05,"atr_pct":2.892},{"date":"2025-05-25","close":109004.19,"ma200":93974.07,"rsi":66.12,"atr_pct":2.832},{"date":"2025-05-26","close":109434.79,"ma200":94141.96,"rsi":66.84,"atr_pct":2.733},{"date":"2025-05-27","close":108938.17,"ma200":94304.1,"rsi":65.13,"atr_pct":2.76},{"date":"2025-05-28","close":107781.78,"ma200":94459.62,"rsi":61.22,"atr_pct":2.757},{"date":"2025-05-29","close":105589.75,"ma200":94585.72,"rsi":54.53,"atr_pct":2.854},{"date":"2025-05-30","close":103985.48,"ma200":94662.41,"rsi":50.2,"atr_pct":2.876},{"date":"2025-05-31","close":104591.88,"ma200":94745.61,"rsi":51.76,"atr_pct":2.78},{"date":"2025-06-01","close":105642.93,"ma200":94821.94,"rsi":54.42,"atr_pct":2.699},{"date":"2025-06-02","close":105857.99,"ma200":94914.61,"rsi":54.97,"atr_pct":2.655},{"date":"2025-06-03","close":105376.89,"ma200":94986.33,"rsi":53.42,"atr_pct":2.607},{"date":"2025-06-04","close":104696.86,"ma200":95056.88,"rsi":51.23,"atr_pct":2.56},{"date":"2025-06-05","close":101508.68,"ma200":95115.14,"rsi":42.44,"atr_pct":2.842},{"date":"2025-06-06","close":104288.44,"ma200":95184.27,"rsi":50.43,"atr_pct":2.859},{"date":"2025-06-07","close":105552.15,"ma200":95250.47,"rsi":53.58,"atr_pct":2.76},{"date":"2025-06-08","close":105734.0,"ma200":95307.71,"rsi":54.03,"atr_pct":2.661},{"date":"2025-06-09","close":110263.02,"ma200":95367.44,"rsi":63.57,"atr_pct":2.707},{"date":"2025-06-10","close":110274.39,"ma200":95424.35,"rsi":63.59,"atr_pct":2.648},{"date":"2025-06-11","close":108645.12,"ma200":95479.21,"rsi":58.53,"atr_pct":2.649},{"date":"2025-06-12","close":105671.73,"ma200":95518.07,"rsi":50.61,"atr_pct":2.741},{"date":"2025-06-13","close":106066.59,"ma200":95583.36,"rsi":51.55,"atr_pct":2.772},{"date":"2025-06-14","close":105414.64,"ma200":95650.6,"rsi":49.86,"atr_pct":2.723},{"date":"2025-06-15","close":105594.01,"ma200":95699.26,"rsi":50.34,"atr_pct":2.634},{"date":"2025-06-16","close":106794.53,"ma200":95755.01,"rsi":53.55,"atr_pct":2.684},{"date":"2025-06-17","close":104551.17,"ma200":95790.47,"rsi":47.39,"atr_pct":2.847},{"date":"2025-06-18","close":104886.78,"ma200":95832.86,"rsi":48.35,"atr_pct":2.775},{"date":"2025-06-19","close":104658.59,"ma200":95870.23,"rsi":47.71,"atr_pct":2.671},{"date":"2025-06-20","close":103297.99,"ma200":95907.51,"rsi":44.0,"atr_pct":2.801},{"date":"2025-06-21","close":102120.01,"ma200":95938.87,"rsi":41.02,"atr_pct":2.851},{"date":"2025-06-22","close":100963.87,"ma200":95950.75,"rsi":38.28,"atr_pct":3.046},{"date":"2025-06-23","close":105333.93,"ma200":95992.69,"rsi":51.47,"atr_pct":3.149},{"date":"2025-06-24","close":106083.0,"ma200":96024.4,"rsi":53.31,"atr_pct":3.016},{"date":"2025-06-25","close":107340.58,"ma200":96061.94,"rsi":56.31,"atr_pct":2.922},{"date":"2025-06-26","close":106947.06,"ma200":96091.13,"rsi":55.12,"atr_pct":2.838},{"date":"2025-06-27","close":107047.59,"ma200":96139.99,"rsi":55.38,"atr_pct":2.725},{"date":"2025-06-28","close":107296.79,"ma200":96193.51,"rsi":56.06,"atr_pct":2.575},{"date":"2025-06-29","close":108356.93,"ma200":96229.67,"rsi":58.92,"atr_pct":2.457},{"date":"2025-06-30","close":107146.5,"ma200":96265.38,"rsi":54.55,"atr_pct":2.445},{"date":"2025-07-01","close":105681.14,"ma200":96286.66,"rsi":49.73,"atr_pct":2.456},{"date":"2025-07-02","close":108849.6,"ma200":96323.81,"rsi":58.3,"atr_pct":2.518},{"date":"2025-07-03","close":109584.78,"ma200":96349.41,"rsi":60.01,"atr_pct":2.453},{"date":"2025-07-04","close":107984.24,"ma200":96359.04,"rsi":54.76,"atr_pct":2.478},{"date":"2025-07-05","close":108198.12,"ma200":96369.36,"rsi":55.32,"atr_pct":2.341},{"date":"2025-07-06","close":109203.84,"ma200":96414.36,"rsi":57.97,"atr_pct":2.278},{"date":"2025-07-07","close":108262.94,"ma200":96468.37,"rsi":54.7,"atr_pct":2.278},{"date":"2025-07-08","close":108922.98,"ma200":96523.95,"rsi":56.55,"atr_pct":2.219},{"date":"2025-07-09","close":111233.99,"ma200":96593.66,"rsi":62.34,"atr_pct":2.254},{"date":"2025-07-10","close":116010.0,"ma200":96697.78,"rsi":70.96,"atr_pct":2.399},{"date":"2025-07-11","close":117527.66,"ma200":96811.01,"rsi":73.07,"atr_pct":2.42},{"date":"2025-07-12","close":117420.0,"ma200":96904.8,"rsi":72.66,"atr_pct":2.329},{"date":"2025-07-13","close":119086.64,"ma200":97003.08,"rsi":74.97,"atr_pct":2.268},{"date":"2025-07-14","close":119841.18,"ma200":97123.33,"rsi":75.95,"atr_pct":2.35},{"date":"2025-07-15","close":117758.09,"ma200":97240.62,"rsi":67.98,"atr_pct":2.475},{"date":"2025-07-16","close":118630.43,"ma200":97357.28,"rsi":69.43,"atr_pct":2.465},{"date":"2025-07-17","close":119177.56,"ma200":97484.47,"rsi":70.33,"atr_pct":2.491},{"date":"2025-07-18","close":117924.84,"ma200":97610.14,"rsi":65.55,"atr_pct":2.58},{"date":"2025-07-19","close":117840.0,"ma200":97731.46,"rsi":65.22,"atr_pct":2.472},{"date":"2025-07-20","close":117265.12,"ma200":97844.82,"rsi":62.95,"atr_pct":2.452},{"date":"2025-07-21","close":117380.36,"ma200":97946.8,"rsi":63.23,"atr_pct":2.467},{"date":"2025-07-22","close":119954.42,"ma200":98055.7,"rsi":68.82,"atr_pct":2.487},{"date":"2025-07-23","close":118755.99,"ma200":98158.38,"rsi":63.95,"atr_pct":2.501},{"date":"2025-07-24","close":118340.99,"ma200":98258.27,"rsi":62.3,"atr_pct":2.472},{"date":"2025-07-25","close":117614.31,"ma200":98335.16,"rsi":59.42,"atr_pct":2.536},{"date":"2025-07-26","close":117919.99,"ma200":98439.99,"rsi":60.25,"atr_pct":2.419},{"date":"2025-07-27","close":119415.55,"ma200":98561.76,"rsi":64.13,"atr_pct":2.334},{"date":"2025-07-28","close":118062.32,"ma200":98689.31,"rsi":58.56,"atr_pct":2.336},{"date":"2025-07-29","close":117950.76,"ma200":98805.44,"rsi":58.11,"atr_pct":2.312},{"date":"2025-07-30","close":117840.3,"ma200":98921.64,"rsi":57.64,"atr_pct":2.33},{"date":"2025-07-31","close":115764.08,"ma200":99027.73,"rsi":49.52,"atr_pct":2.414},{"date":"2025-08-01","close":113297.93,"ma200":99121.54,"rsi":41.97,"atr_pct":2.5},{"date":"2025-08-02","close":112546.35,"ma200":99201.47,"rsi":39.96,"atr_pct":2.468},{"date":"2025-08-03","close":114208.8,"ma200":99270.03,"rsi":46.09,"atr_pct":2.438},{"date":"2025-08-04","close":115055.03,"ma200":99345.36,"rsi":48.95,"atr_pct":2.347},{"date":"2025-08-05","close":114129.75,"ma200":99395.63,"rsi":46.07,"atr_pct":2.352},{"date":"2025-08-06","close":114992.27,"ma200":99447.81,"rsi":49.07,"atr_pct":2.315},{"date":"2025-08-07","close":117472.01,"ma200":99528.51,"rsi":56.56,"atr_pct":2.308},{"date":"2025-08-08","close":116674.74,"ma200":99600.58,"rsi":53.82,"atr_pct":2.265},{"date":"2025-08-09","close":116462.25,"ma200":99652.17,"rsi":53.08,"atr_pct":2.208},{"date":"2025-08-10","close":119294.01,"ma200":99730.11,"rsi":60.8,"atr_pct":2.173},{"date":"2025-08-11","close":118686.0,"ma200":99803.99,"rsi":58.57,"atr_pct":2.286},{"date":"2025-08-12","close":120134.08,"ma200":99880.31,"rsi":62.13,"atr_pct":2.223},{"date":"2025-08-13","close":123306.43,"ma200":99973.11,"rsi":68.51,"atr_pct":2.286},{"date":"2025-08-14","close":118295.09,"ma200":100051.48,"rsi":53.25,"atr_pct":2.653},{"date":"2025-08-15","close":117342.05,"ma200":100127.78,"rsi":50.92,"atr_pct":2.63},{"date":"2025-08-16","close":117380.66,"ma200":100208.0,"rsi":51.02,"atr_pct":2.487},{"date":"2025-08-17","close":117405.01,"ma200":100276.36,"rsi":51.08,"atr_pct":2.395},{"date":"2025-08-18","close":116227.05,"ma200":100333.88,"rsi":47.87,"atr_pct":2.425},{"date":"2025-08-19","close":112872.94,"ma200":100386.1,"rsi":40.13,"atr_pct":2.571},{"date":"2025-08-20","close":114271.24,"ma200":100454.28,"rsi":44.18,"atr_pct":2.498},{"date":"2025-08-21","close":112500.0,"ma200":100528.27,"rsi":40.44,"atr_pct":2.534},{"date":"2025-08-22","close":116935.99,"ma200":100606.31,"rsi":51.5,"atr_pct":2.615},{"date":"2025-08-23","close":115438.05,"ma200":100694.69,"rsi":48.24,"atr_pct":2.612},{"date":"2025-08-24","close":113493.59,"ma200":100779.09,"rsi":44.32,"atr_pct":2.781},{"date":"2025-08-25","close":110111.98,"ma200":100846.88,"rsi":38.47,"atr_pct":2.947},{"date":"2025-08-26","close":111763.22,"ma200":100923.16,"rsi":42.47,"atr_pct":2.933},{"date":"2025-08-27","close":111262.01,"ma200":100997.25,"rsi":41.58,"atr_pct":2.882},{"date":"2025-08-28","close":112566.9,"ma200":101077.77,"rsi":44.8,"atr_pct":2.811},{"date":"2025-08-29","close":108377.4,"ma200":101132.5,"rsi":37.64,"atr_pct":3.053},{"date":"2025-08-30","close":108816.33,"ma200":101197.69,"rsi":38.74,"atr_pct":2.926},{"date":"2025-08-31","close":108246.35,"ma200":101249.57,"rsi":37.8,"atr_pct":2.824},{"date":"2025-09-01","close":109237.42,"ma200":101312.72,"rsi":40.5,"atr_pct":2.773},{"date":"2025-09-02","close":111240.01,"ma200":101381.42,"rsi":45.63,"atr_pct":2.745},{"date":"2025-09-03","close":111705.71,"ma200":101452.1,"rsi":46.77,"atr_pct":2.669},{"date":"2025-09-04","close":110730.87,"ma200":101525.16,"rsi":44.65,"atr_pct":2.684},{"date":"2025-09-05","close":110659.99,"ma200":101599.56,"rsi":44.49,"atr_pct":2.699},{"date":"2025-09-06","close":110187.97,"ma200":101672.14,"rsi":43.39,"atr_pct":2.603},{"date":"2025-09-07","close":111137.34,"ma200":101744.61,"rsi":46.27,"atr_pct":2.488},{"date":"2025-09-08","close":112065.23,"ma200":101813.41,"rsi":49.01,"atr_pct":2.438},{"date":"2025-09-09","close":111546.39,"ma200":101890.23,"rsi":47.55,"atr_pct":2.436},{"date":"2025-09-10","close":113960.0,"ma200":101977.28,"rsi":54.36,"atr_pct":2.427},{"date":"2025-09-11","close":115482.69,"ma200":102073.4,"rsi":58.05,"atr_pct":2.351},{"date":"2025-09-12","close":116029.42,"ma200":102195.78,"rsi":59.33,"atr_pct":2.292},{"date":"2025-09-13","close":115918.29,"ma200":102331.97,"rsi":58.94,"atr_pct":2.202},{"date":"2025-09-14","close":115268.01,"ma200":102487.06,"rsi":56.58,"atr_pct":2.12},{"date":"2025-09-15","close":115349.71,"ma200":102640.27,"rsi":56.81,"atr_pct":2.114},{"date":"2025-09-16","close":116788.96,"ma200":102802.46,"rsi":60.81,"atr_pct":2.075},{"date":"2025-09-17","close":116447.59,"ma200":102954.38,"rsi":59.41,"atr_pct":2.09},{"date":"2025-09-18","close":117073.53,"ma200":103068.4,"rsi":61.18,"atr_pct":2.041},{"date":"2025-09-19","close":115632.38,"ma200":103215.45,"rsi":55.21,"atr_pct":2.064},{"date":"2025-09-20","close":115685.63,"ma200":103357.47,"rsi":55.38,"atr_pct":1.96},{"date":"2025-09-21","close":115232.29,"ma200":103480.6,"rsi":53.48,"atr_pct":1.866},{"date":"2025-09-22","close":112650.99,"ma200":103594.2,"rsi":44.2,"atr_pct":2.0},{"date":"2025-09-23","close":111998.8,"ma200":103720.18,"rsi":42.21,"atr_pct":1.985},{"date":"2025-09-24","close":113307.0,"ma200":103855.61,"rsi":47.34,"atr_pct":2.004},{"date":"2025-09-25","close":108994.49,"ma200":103996.91,"rsi":35.99,"atr_pct":2.254},{"date":"2025-09-26","close":109643.46,"ma200":104152.15,"rsi":38.39,"atr_pct":2.19},{"date":"2025-09-27","close":109635.85,"ma200":104285.66,"rsi":38.37,"atr_pct":2.078},{"date":"2025-09-28","close":112163.95,"ma200":104428.08,"rsi":47.27,"atr_pct":2.088},{"date":"2025-09-29","close":114311.96,"ma200":104594.06,"rsi":53.42,"atr_pct":2.079},{"date":"2025-09-30","close":114048.93,"ma200":104744.39,"rsi":52.61,"atr_pct":2.069},{"date":"2025-10-01","close":118594.99,"ma200":104915.67,"rsi":63.04,"atr_pct":2.13},{"date":"2025-10-02","close":120529.35,"ma200":105105.45,"rsi":66.43,"atr_pct":2.108},{"date":"2025-10-03","close":122232.0,"ma200":105296.56,"rsi":69.11,"atr_pct":2.202},{"date":"2025-10-04","close":122391.0,"ma200":105494.94,"rsi":69.36,"atr_pct":2.117},{"date":"2025-10-05","close":123482.31,"ma200":105678.12,"rsi":71.06,"atr_pct":2.155},{"date":"2025-10-06","close":124658.54,"ma200":105880.29,"rsi":72.82,"atr_pct":2.161},{"date":"2025-10-07","close":121332.95,"ma200":106066.51,"rsi":61.46,"atr_pct":2.33},{"date":"2025-10-08","close":123306.0,"ma200":106263.84,"rsi":64.96,"atr_pct":2.31},{"date":"2025-10-09","close":121662.4,"ma200":106441.74,"rsi":60.07,"atr_pct":2.415},{"date":"2025-10-10","close":112774.5,"ma200":106568.12,"rsi":41.78,"atr_pct":3.721},{"date":"2025-10-11","close":110644.4,"ma200":106684.38,"rsi":38.74,"atr_pct":3.765},{"date":"2025-10-12","close":114958.8,"ma200":106824.63,"rsi":47.14,"atr_pct":3.75},{"date":"2025-10-13","close":115166.0,"ma200":106964.3,"rsi":47.51,"atr_pct":3.622},{"date":"2025-10-14","close":113028.14,"ma200":107107.32,"rsi":44.06,"atr_pct":3.777},{"date":"2025-10-15","close":110763.28,"ma200":107247.89,"rsi":40.69,"atr_pct":3.801},{"date":"2025-10-16","close":108194.28,"ma200":107376.91,"rsi":37.22,"atr_pct":3.914},{"date":"2025-10-17","close":106431.68,"ma200":107496.32,"rsi":35.01,"atr_pct":4.078},{"date":"2025-10-18","close":107185.01,"ma200":107606.45,"rsi":36.74,"atr_pct":3.839},{"date":"2025-10-19","close":108642.78,"ma200":107737.09,"rsi":40.06,"atr_pct":3.737},{"date":"2025-10-20","close":110532.09,"ma200":107873.68,"rsi":44.15,"atr_pct":3.689},{"date":"2025-10-21","close":108297.67,"ma200":107995.72,"rsi":40.62,"atr_pct":3.926},{"date":"2025-10-22","close":107567.44,"ma200":108115.87,"rsi":39.51,"atr_pct":3.836},{"date":"2025-10-23","close":110078.18,"ma200":108274.11,"rsi":45.08,"atr_pct":3.727},{"date":"2025-10-24","close":111004.89,"ma200":108433.32,"rsi":47.02,"atr_pct":3.587},{"date":"2025-10-25","close":111646.27,"ma200":108609.94,"rsi":48.38,"atr_pct":3.393},{"date":"2025-10-26","close":114559.4,"ma200":108769.66,"rsi":54.13,"atr_pct":3.333},{"date":"2025-10-27","close":114107.65,"ma200":108942.16,"rsi":53.14,"atr_pct":3.268},{"date":"2025-10-28","close":112898.45,"ma200":109089.53,"rsi":50.48,"atr_pct":3.312},{"date":"2025-10-29","close":110021.29,"ma200":109213.25,"rsi":44.74,"atr_pct":3.444},{"date":"2025-10-30","close":108322.88,"ma200":109336.07,"rsi":41.73,"atr_pct":3.597},{"date":"2025-10-31","close":109608.01,"ma200":109461.15,"rsi":44.76,"atr_pct":3.491},{"date":"2025-11-01","close":110098.1,"ma200":109593.42,"rsi":45.92,"atr_pct":3.303},{"date":"2025-11-02","close":110540.68,"ma200":109725.97,"rsi":47.0,"atr_pct":3.17},{"date":"2025-11-03","close":106583.04,"ma200":109834.15,"rsi":39.42,"atr_pct":3.417},{"date":"2025-11-04","close":101497.22,"ma200":109919.26,"rsi":32.24,"atr_pct":3.92},{"date":"2025-11-05","close":103885.16,"ma200":110013.3,"rsi":37.96,"atr_pct":3.939},{"date":"2025-11-06","close":101346.04,"ma200":110094.13,"rsi":34.61,"atr_pct":4.025},{"date":"2025-11-07","close":103339.08,"ma200":110173.25,"rsi":39.14,"atr_pct":3.999},{"date":"2025-11-08","close":102312.94,"ma200":110217.6,"rsi":37.7,"atr_pct":3.887},{"date":"2025-11-09","close":104722.96,"ma200":110272.76,"rsi":43.03,"atr_pct":3.806},{"date":"2025-11-10","close":106011.13,"ma200":110332.91,"rsi":45.71,"atr_pct":3.653},{"date":"2025-11-11","close":103058.99,"ma200":110375.01,"rsi":40.96,"atr_pct":3.837},{"date":"2025-11-12","close":101654.37,"ma200":110410.14,"rsi":38.89,"atr_pct":3.93},{"date":"2025-11-13","close":99692.02,"ma200":110439.86,"rsi":36.14,"atr_pct":4.157},{"date":"2025-11-14","close":94594.0,"ma200":110437.77,"rsi":30.17,"atr_pct":4.51},{"date":"2025-11-15","close":95596.24,"ma200":110444.47,"rsi":32.53,"atr_pct":4.315},{"date":"2025-11-16","close":94261.44,"ma200":110444.92,"rsi":31.03,"atr_pct":4.339},{"date":"2025-11-17","close":92215.14,"ma200":110423.54,"rsi":28.83,"atr_pct":4.492},{"date":"2025-11-18","close":92960.83,"ma200":110403.91,"rsi":30.76,"atr_pct":4.49},{"date":"2025-11-19","close":91554.96,"ma200":110382.4,"rsi":29.15,"atr_pct":4.574},{"date":"2025-11-20","close":86637.23,"ma200":110344.2,"rsi":24.37,"atr_pct":5.07},{"date":"2025-11-21","close":85129.43,"ma200":110296.18,"rsi":23.12,"atr_pct":5.371},{"date":"2025-11-22","close":84739.74,"ma200":110235.71,"rsi":22.8,"atr_pct":5.189},{"date":"2025-11-23","close":86830.0,"ma200":110184.71,"rsi":28.61,"atr_pct":4.987},{"date":"2025-11-24","close":88300.01,"ma200":110109.9,"rsi":32.46,"atr_pct":4.873},{"date":"2025-11-25","close":87369.96,"ma200":110031.89,"rsi":31.31,"atr_pct":4.77},{"date":"2025-11-26","close":90484.02,"ma200":109960.26,"rsi":39.1,"atr_pct":4.62},{"date":"2025-11-27","close":91333.95,"ma200":109896.34,"rsi":41.06,"atr_pct":4.396},{"date":"2025-11-28","close":90890.7,"ma200":109836.84,"rsi":40.33,"atr_pct":4.33},{"date":"2025-11-29","close":90802.44,"ma200":109770.33,"rsi":40.18,"atr_pct":4.104},{"date":"2025-11-30","close":90360.0,"ma200":109704.59,"rsi":39.37,"atr_pct":3.961},{"date":"2025-12-01","close":86286.01,"ma200":109617.2,"rsi":32.83,"atr_pct":4.398},{"date":"2025-12-02","close":91277.88,"ma200":109556.27,"rsi":44.91,"atr_pct":4.34},{"date":"2025-12-03","close":93429.95,"ma200":109507.79,"rsi":49.15,"atr_pct":4.178},{"date":"2025-12-04","close":92078.06,"ma200":109435.91,"rsi":46.72,"atr_pct":4.185},{"date":"2025-12-05","close":89330.04,"ma200":109354.69,"rsi":42.15,"atr_pct":4.376},{"date":"2025-12-06","close":89236.79,"ma200":109266.62,"rsi":42.0,"atr_pct":4.178},{"date":"2025-12-07","close":90395.31,"ma200":109170.38,"rsi":44.64,"atr_pct":4.149},{"date":"2025-12-08","close":90634.34,"ma200":109065.07,"rsi":45.19,"atr_pct":4.054},{"date":"2025-12-09","close":92678.8,"ma200":108991.87,"rsi":49.82,"atr_pct":4.073},{"date":"2025-12-10","close":92015.37,"ma200":108913.14,"rsi":48.39,"atr_pct":4.036},{"date":"2025-12-11","close":92513.38,"ma200":108830.69,"rsi":49.56,"atr_pct":4.059},{"date":"2025-12-12","close":90268.42,"ma200":108734.86,"rsi":44.65,"atr_pct":4.122},{"date":"2025-12-13","close":90240.01,"ma200":108641.37,"rsi":44.59,"atr_pct":3.897},{"date":"2025-12-14","close":88172.17,"ma200":108543.32,"rsi":40.33,"atr_pct":3.938},{"date":"2025-12-15","close":86432.08,"ma200":108447.53,"rsi":37.11,"atr_pct":4.136},{"date":"2025-12-16","close":87863.42,"ma200":108366.92,"rsi":41.26,"atr_pct":4.015},{"date":"2025-12-17","close":86243.22,"ma200":108275.18,"rsi":38.19,"atr_pct":4.216},{"date":"2025-12-18","close":85516.41,"ma200":108174.54,"rsi":36.87,"atr_pct":4.368},{"date":"2025-12-19","close":88136.94,"ma200":108085.94,"rsi":44.36,"atr_pct":4.283},{"date":"2025-12-20","close":88360.9,"ma200":108000.86,"rsi":44.96,"atr_pct":4.03},{"date":"2025-12-21","close":88658.86,"ma200":107920.67,"rsi":45.8,"atr_pct":3.849},{"date":"2025-12-22","close":88620.79,"ma200":107856.23,"rsi":45.71,"atr_pct":3.792},{"date":"2025-12-23","close":87486.0,"ma200":107772.22,"rsi":42.83,"atr_pct":3.758},{"date":"2025-12-24","close":87669.45,"ma200":107682.8,"rsi":43.45,"atr_pct":3.615},{"date":"2025-12-25","close":87225.27,"ma200":107590.26,"rsi":42.25,"atr_pct":3.51},{"date":"2025-12-26","close":87369.56,"ma200":107475.79,"rsi":42.8,"atr_pct":3.492},{"date":"2025-12-27","close":87877.01,"ma200":107363.8,"rsi":44.8,"atr_pct":3.283},{"date":"2025-12-28","close":87952.71,"ma200":107260.34,"rsi":45.1,"atr_pct":3.099},{"date":"2025-12-29","close":87237.13,"ma200":107168.17,"rsi":42.68,"atr_pct":3.196},{"date":"2025-12-30","close":88485.49,"ma200":107080.26,"rsi":47.93,"atr_pct":3.132},{"date":"2025-12-31","close":87648.22,"ma200":106991.43,"rsi":44.96,"atr_pct":3.095},{"date":"2026-01-01","close":88839.04,"ma200":106907.66,"rsi":49.73,"atr_pct":2.945},{"date":"2026-01-02","close":89995.13,"ma200":106823.66,"rsi":53.91,"atr_pct":2.905},{"date":"2026-01-03","close":90628.01,"ma200":106754.04,"rsi":56.07,"atr_pct":2.791},{"date":"2026-01-04","close":91529.73,"ma200":106687.26,"rsi":59.0,"atr_pct":2.658},{"date":"2026-01-05","close":93859.71,"ma200":106633.26,"rsi":65.44,"atr_pct":2.656},{"date":"2026-01-06","close":93747.97,"ma200":106585.51,"rsi":64.91,"atr_pct":2.712},{"date":"2026-01-07","close":91364.16,"ma200":106531.74,"rsi":54.79,"atr_pct":2.824},{"date":"2026-01-08","close":91099.99,"ma200":106482.42,"rsi":53.79,"atr_pct":2.816},{"date":"2026-01-09","close":90641.28,"ma200":106408.95,"rsi":52.01,"atr_pct":2.817},{"date":"2026-01-10","close":90504.7,"ma200":106331.06,"rsi":51.47,"atr_pct":2.653},{"date":"2026-01-11","close":91013.65,"ma200":106249.43,"rsi":53.43,"atr_pct":2.532},{"date":"2026-01-12","close":91296.2,"ma200":106171.17,"rsi":54.52,"atr_pct":2.531},{"date":"2026-01-13","close":95414.0,"ma200":106113.0,"rsi":66.8,"atr_pct":2.657},{"date":"2026-01-14","close":96951.78,"ma200":106061.28,"rsi":70.05,"atr_pct":2.676},{"date":"2026-01-15","close":95604.8,"ma200":105997.52,"rsi":64.13,"atr_pct":2.674},{"date":"2026-01-16","close":95550.94,"ma200":105939.54,"rsi":63.9,"atr_pct":2.602},{"date":"2026-01-17","close":95147.77,"ma200":105886.87,"rsi":62.08,"atr_pct":2.473},{"date":"2026-01-18","close":93673.14,"ma200":105810.99,"rsi":55.83,"atr_pct":2.478},{"date":"2026-01-19","close":92631.0,"ma200":105726.22,"rsi":51.86,"atr_pct":2.463},{"date":"2026-01-20","close":88427.66,"ma200":105628.44,"rsi":39.61,"atr_pct":2.798},{"date":"2026-01-21","close":89454.73,"ma200":105534.72,"rsi":43.14,"atr_pct":2.833},{"date":"2026-01-22","close":89559.67,"ma200":105436.5,"rsi":43.51,"atr_pct":2.774},{"date":"2026-01-23","close":89600.26,"ma200":105343.19,"rsi":43.66,"atr_pct":2.786},{"date":"2026-01-24","close":89225.34,"ma200":105244.7,"rsi":42.53,"atr_pct":2.661},{"date":"2026-01-25","close":86670.36,"ma200":105121.88,"rsi":35.77,"atr_pct":2.812},{"date":"2026-01-26","close":88347.08,"ma200":104983.57,"rsi":42.26,"atr_pct":2.751},{"date":"2026-01-27","close":89250.0,"ma200":104842.18,"rsi":45.45,"atr_pct":2.706},{"date":"2026-01-28","close":89299.99,"ma200":104701.58,"rsi":45.63,"atr_pct":2.653},{"date":"2026-01-29","close":84650.16,"ma200":104529.4,"rsi":34.33,"atr_pct":3.102},{"date":"2026-01-30","close":84260.49,"ma200":104351.49,"rsi":33.58,"atr_pct":3.201},{"date":"2026-01-31","close":78741.09,"ma200":104156.41,"rsi":25.18,"atr_pct":3.956},{"date":"2026-02-01","close":76968.21,"ma200":103948.1,"rsi":23.17,"atr_pct":4.104},{"date":"2026-02-02","close":78738.61,"ma200":103745.9,"rsi":29.23,"atr_pct":4.156},{"date":"2026-02-03","close":75770.21,"ma200":103535.13,"rsi":25.59,"atr_pct":4.599},{"date":"2026-02-04","close":73165.83,"ma200":103311.76,"rsi":22.89,"atr_pct":4.919},{"date":"2026-02-05","close":62909.86,"ma200":103039.98,"rsi":15.82,"atr_pct":6.56},{"date":"2026-02-06","close":70580.26,"ma200":102805.98,"rsi":32.59,"atr_pct":6.619},{"date":"2026-02-07","close":69289.38,"ma200":102552.66,"rsi":31.46,"atr_pct":6.713},{"date":"2026-02-08","close":70330.38,"ma200":102310.53,"rsi":33.47,"atr_pct":6.485},{"date":"2026-02-09","close":70138.0,"ma200":102069.51,"rsi":33.27,"atr_pct":6.359},{"date":"2026-02-10","close":68841.29,"ma200":101825.65,"rsi":31.93,"atr_pct":6.299},{"date":"2026-02-11","close":67082.52,"ma200":101571.46,"rsi":30.14,"atr_pct":6.379},{"date":"2026-02-12","close":66272.17,"ma200":101305.74,"rsi":29.33,"atr_pct":6.351},{"date":"2026-02-13","close":68853.96,"ma200":101059.7,"rsi":35.31,"atr_pct":6.05},{"date":"2026-02-14","close":69822.95,"ma200":100819.06,"rsi":37.46,"atr_pct":5.727},{"date":"2026-02-15","close":68832.58,"ma200":100574.02,"rsi":36.14,"atr_pct":5.704},{"date":"2026-02-16","close":68892.43,"ma200":100339.67,"rsi":36.28,"atr_pct":5.586},{"date":"2026-02-17","close":67503.52,"ma200":100110.69,"rsi":34.33,"atr_pct":5.571},{"date":"2026-02-18","close":66461.0,"ma200":99880.27,"rsi":32.89,"atr_pct":5.534},{"date":"2026-02-19","close":67003.73,"ma200":99644.24,"rsi":34.43,"atr_pct":5.277},{"date":"2026-02-20","close":68020.01,"ma200":99409.07,"rsi":37.32,"atr_pct":5.041},{"date":"2026-02-21","close":67975.93,"ma200":99178.3,"rsi":37.25,"atr_pct":4.806},{"date":"2026-02-22","close":67643.4,"ma200":98941.55,"rsi":36.63,"atr_pct":4.597},{"date":"2026-02-23","close":64656.02,"ma200":98677.47,"rsi":31.61,"atr_pct":4.885},{"date":"2026-02-24","close":64058.15,"ma200":98414.39,"rsi":30.7,"atr_pct":4.859},{"date":"2026-02-25","close":67988.04,"ma200":98172.02,"rsi":42.41,"atr_pct":4.889},{"date":"2026-02-26","close":67485.18,"ma200":97912.98,"rsi":41.44,"atr_pct":4.824},{"date":"2026-02-27","close":65872.1,"ma200":97648.91,"rsi":38.42,"atr_pct":4.947},{"date":"2026-02-28","close":66973.26,"ma200":97383.1,"rsi":41.55,"atr_pct":5.022},{"date":"2026-03-01","close":65776.47,"ma200":97095.45,"rsi":39.22,"atr_pct":5.09},{"date":"2026-03-02","close":68830.06,"ma200":96848.13,"rsi":47.35,"atr_pct":5.019},{"date":"2026-03-03","close":68338.0,"ma200":96603.11,"rsi":46.27,"atr_pct":5.018},{"date":"2026-03-04","close":72666.77,"ma200":96379.54,"rsi":55.77,"atr_pct":5.035},{"date":"2026-03-05","close":70890.72,"ma200":96146.97,"rsi":51.73,"atr_pct":5.086},{"date":"2026-03-06","close":68114.02,"ma200":95906.4,"rsi":46.11,"atr_pct":5.301},{"date":"2026-03-07","close":67262.91,"ma200":95678.35,"rsi":44.51,"atr_pct":5.158},{"date":"2026-03-08","close":65971.2,"ma200":95436.85,"rsi":42.12,"atr_pct":5.163},{"date":"2026-03-09","close":68432.16,"ma200":95216.51,"rsi":47.86,"atr_pct":5.008},{"date":"2026-03-10","close":69948.63,"ma200":94981.57,"rsi":51.07,"atr_pct":4.895},{"date":"2026-03-11","close":70191.86,"ma200":94755.34,"rsi":51.59,"atr_pct":4.768},{"date":"2026-03-12","close":70541.34,"ma200":94540.58,"rsi":52.37,"atr_pct":4.567},{"date":"2026-03-13","close":70930.0,"ma200":94344.67,"rsi":53.27,"atr_pct":4.573},{"date":"2026-03-14","close":71211.95,"ma200":94141.92,"rsi":53.94,"atr_pct":4.329},{"date":"2026-03-15","close":72815.24,"ma200":93949.68,"rsi":57.71,"atr_pct":4.16},{"date":"2026-03-16","close":74884.67,"ma200":93761.27,"rsi":62.02,"atr_pct":4.008},{"date":"2026-03-17","close":73909.36,"ma200":93588.93,"rsi":58.97,"atr_pct":4.022},{"date":"2026-03-18","close":71246.54,"ma200":93401.08,"rsi":51.51,"atr_pct":4.293},{"date":"2026-03-19","close":69930.0,"ma200":93209.5,"rsi":48.27,"atr_pct":4.349},{"date":"2026-03-20","close":70510.73,"ma200":93015.87,"rsi":49.77,"atr_pct":4.206},{"date":"2026-03-21","close":68918.12,"ma200":92804.26,"rsi":45.83,"atr_pct":4.258},{"date":"2026-03-22","close":67859.0,"ma200":92585.02,"rsi":43.38,"atr_pct":4.25},{"date":"2026-03-23","close":70906.45,"ma200":92385.9,"rsi":51.44,"atr_pct":4.217},{"date":"2026-03-24","close":70556.74,"ma200":92185.39,"rsi":50.55,"atr_pct":4.186},{"date":"2026-03-25","close":71336.53,"ma200":91991.13,"rsi":52.53,"atr_pct":4.007},{"date":"2026-03-26","close":68820.31,"ma200":91779.54,"rsi":46.13,"atr_pct":4.197},{"date":"2026-03-27","close":66407.28,"ma200":91551.25,"rsi":40.98,"atr_pct":4.43},{"date":"2026-03-28","close":66377.03,"ma200":91325.41,"rsi":40.92,"atr_pct":4.261},{"date":"2026-03-29","close":66010.93,"ma200":91085.66,"rsi":40.13,"atr_pct":4.209},{"date":"2026-03-30","close":66797.37,"ma200":90842.23,"rsi":42.68,"atr_pct":4.116},{"date":"2026-03-31","close":68284.48,"ma200":90603.51,"rsi":47.26,"atr_pct":4.01},{"date":"2026-04-01","close":68113.92,"ma200":90364.49,"rsi":46.8,"atr_pct":3.914},{"date":"2026-04-02","close":66901.99,"ma200":90122.66,"rsi":43.54,"atr_pct":4.015},{"date":"2026-04-03","close":66964.3,"ma200":89880.73,"rsi":43.76,"atr_pct":3.84},{"date":"2026-04-04","close":67300.42,"ma200":89633.29,"rsi":44.99,"atr_pct":3.632},{"date":"2026-04-05","close":69034.18,"ma200":89396.22,"rsi":50.93,"atr_pct":3.549},{"date":"2026-04-06","close":68853.66,"ma200":89155.12,"rsi":50.32,"atr_pct":3.517},{"date":"2026-04-07","close":71924.22,"ma200":88936.58,"rsi":59.25,"atr_pct":3.626},{"date":"2026-04-08","close":71069.93,"ma200":88713.5,"rsi":56.22,"atr_pct":3.623},{"date":"2026-04-09","close":71787.97,"ma200":88496.28,"rsi":58.16,"atr_pct":3.597},{"date":"2026-04-10","close":72962.7,"ma200":88297.84,"rsi":61.18,"atr_pct":3.483},{"date":"2026-04-11","close":73043.16,"ma200":88103.06,"rsi":61.39,"atr_pct":3.356},{"date":"2026-04-12","close":70740.98,"ma200":87890.23,"rsi":52.77,"atr_pct":3.483},{"date":"2026-04-13","close":74417.99,"ma200":87717.35,"rsi":61.96,"atr_pct":3.49},{"date":"2026-04-14","close":74131.55,"ma200":87539.79,"rsi":60.96,"atr_pct":3.47},{"date":"2026-04-15","close":74809.99,"ma200":87365.66,"rsi":62.5,"atr_pct":3.375},{"date":"2026-04-16","close":75154.29,"ma200":87180.61,"rsi":63.29,"atr_pct":3.331},{"date":"2026-04-17","close":77072.0,"ma200":86994.41,"rsi":67.4,"atr_pct":3.369},{"date":"2026-04-18","close":75691.76,"ma200":86802.63,"rsi":62.01,"atr_pct":3.372},{"date":"2026-04-19","close":73801.79,"ma200":86578.66,"rsi":55.47,"atr_pct":3.451},{"date":"2026-04-20","close":75840.97,"ma200":86355.22,"rsi":60.33,"atr_pct":3.385},{"date":"2026-04-21","close":76336.15,"ma200":86125.74,"rsi":61.44,"atr_pct":3.32},{"date":"2026-04-22","close":78178.23,"ma200":85904.67,"rsi":65.3,"atr_pct":3.315},{"date":"2026-04-23","close":78257.48,"ma200":85678.55,"rsi":65.46,"atr_pct":3.231},{"date":"2026-04-24","close":77437.13,"ma200":85442.44,"rsi":62.25,"atr_pct":3.153},{"date":"2026-04-25","close":77625.0,"ma200":85223.9,"rsi":62.7,"atr_pct":2.99},{"date":"2026-04-26","close":78657.55,"ma200":85000.66,"rsi":65.16,"atr_pct":2.888},{"date":"2026-04-27","close":77371.32,"ma200":84779.21,"rsi":59.87,"atr_pct":3.006},{"date":"2026-04-28","close":76342.77,"ma200":84597.05,"rsi":55.95,"atr_pct":2.998},{"date":"2026-04-29","close":75780.0,"ma200":84422.73,"rsi":53.88,"atr_pct":3.084},{"date":"2026-04-30","close":76346.57,"ma200":84229.66,"rsi":55.66,"atr_pct":2.969},{"date":"2026-05-01","close":78231.13,"ma200":84044.99,"rsi":61.05,"atr_pct":2.927},{"date":"2026-05-02","close":78686.85,"ma200":83873.28,"rsi":62.25,"atr_pct":2.807},{"date":"2026-05-03","close":78568.57,"ma200":83712.31,"rsi":61.72,"atr_pct":2.735},{"date":"2026-05-04","close":79861.01,"ma200":83570.64,"rsi":65.21,"atr_pct":2.729},{"date":"2026-05-05","close":80905.52,"ma200":83443.01,"rsi":67.76,"atr_pct":2.676},{"date":"2026-05-06","close":81447.01,"ma200":83314.32,"rsi":69.03,"atr_pct":2.654},{"date":"2026-05-07","close":80006.0,"ma200":83171.14,"rsi":62.03,"atr_pct":2.706},{"date":"2026-05-08","close":80193.17,"ma200":83019.44,"rsi":62.56,"atr_pct":2.624},{"date":"2026-05-09","close":80678.4,"ma200":82881.35,"rsi":63.97,"atr_pct":2.506},{"date":"2026-05-10","close":82210.07,"ma200":82754.56,"rsi":68.05,"atr_pct":2.475},{"date":"2026-05-11","close":81745.65,"ma200":82612.9,"rsi":65.62,"atr_pct":2.479},{"date":"2026-05-12","close":80504.47,"ma200":82460.4,"rsi":59.51,"atr_pct":2.51},{"date":"2026-05-13","close":79313.61,"ma200":82298.73,"rsi":54.29,"atr_pct":2.597},{"date":"2026-05-14","close":81089.99,"ma200":82131.39,"rsi":59.94,"atr_pct":2.634},{"date":"2026-05-15","close":79113.21,"ma200":81956.41,"rsi":52.21,"atr_pct":2.778},{"date":"2026-05-16","close":78148.05,"ma200":81782.66,"rsi":48.89,"atr_pct":2.757},{"date":"2026-05-17","close":77457.67,"ma200":81619.84,"rsi":46.61,"atr_pct":2.755},{"date":"2026-05-18","close":77001.87,"ma200":81463.24,"rsi":45.11,"atr_pct":2.735},{"date":"2026-05-19","close":76834.36,"ma200":81299.37,"rsi":44.55,"atr_pct":2.664},{"date":"2026-05-20","close":77552.23,"ma200":81136.64,"rsi":47.58,"atr_pct":2.574},{"date":"2026-05-21","close":77615.52,"ma200":80972.02,"rsi":47.85,"atr_pct":2.524},{"date":"2026-05-22","close":75539.5,"ma200":80816.8,"rsi":40.47,"atr_pct":2.648},{"date":"2026-05-23","close":76752.01,"ma200":80693.07,"rsi":45.74,"atr_pct":2.71},{"date":"2026-05-24","close":77064.96,"ma200":80558.97,"rsi":47.04,"atr_pct":2.639},{"date":"2026-05-25","close":77322.01,"ma200":80438.85,"rsi":48.14,"atr_pct":2.534},{"date":"2026-05-26","close":75930.01,"ma200":80301.8,"rsi":42.93,"atr_pct":2.622},{"date":"2026-05-27","close":74449.3,"ma200":80162.49,"rsi":38.2,"atr_pct":2.669},{"date":"2026-05-28","close":73617.51,"ma200":80006.96,"rsi":35.81,"atr_pct":2.701},{"date":"2026-05-29","close":73460.78,"ma200":79844.21,"rsi":35.36,"atr_pct":2.708},{"date":"2026-05-30","close":73884.38,"ma200":79698.33,"rsi":37.64,"atr_pct":2.59},{"date":"2026-05-31","close":73674.39,"ma200":79558.43,"rsi":36.94,"atr_pct":2.497},{"date":"2026-06-01","close":71408.9,"ma200":79417.02,"rsi":30.42,"atr_pct":2.732},{"date":"2026-06-02","close":66760.83,"ma200":79277.85,"rsi":21.89,"atr_pct":3.272},{"date":"2026-06-03","close":64142.75,"ma200":79120.59,"rsi":18.71,"atr_pct":3.543},{"date":"2026-06-04","close":63885.99,"ma200":78968.71,"rsi":18.42,"atr_pct":3.682},{"date":"2026-06-05","close":61056.47,"ma200":78812.92,"rsi":15.62,"atr_pct":4.144},{"date":"2026-06-06","close":60884.62,"ma200":78652.53,"rsi":15.47,"atr_pct":4.097},{"date":"2026-06-07","close":63332.01,"ma200":78511.42,"rsi":26.57,"atr_pct":4.051},{"date":"2026-06-08","close":63085.99,"ma200":78393.66,"rsi":26.19,"atr_pct":3.979},{"date":"2026-06-09","close":62647.06,"ma200":78281.25,"rsi":25.51,"atr_pct":3.808}],"equity_curve":[{"date":"2024-04-01","equity":10000.0,"dd":0.0},{"date":"2024-04-06","equity":10000.0,"dd":0.0},{"date":"2024-04-11","equity":10000.0,"dd":0.0},{"date":"2024-04-16","equity":10000.0,"dd":0.0},{"date":"2024-04-21","equity":10000.0,"dd":0.0},{"date":"2024-04-26","equity":10000.0,"dd":0.0},{"date":"2024-05-01","equity":10000.0,"dd":0.0},{"date":"2024-05-06","equity":10000.0,"dd":0.0},{"date":"2024-05-11","equity":10000.0,"dd":0.0},{"date":"2024-05-16","equity":10000.0,"dd":0.0},{"date":"2024-05-21","equity":10000.0,"dd":0.0},{"date":"2024-05-26","equity":10000.0,"dd":0.0},{"date":"2024-05-31","equity":10000.0,"dd":0.0},{"date":"2024-06-05","equity":10000.0,"dd":0.0},{"date":"2024-06-10","equity":10000.0,"dd":0.0},{"date":"2024-06-15","equity":10000.0,"dd":0.0},{"date":"2024-06-20","equity":10000.0,"dd":0.0},{"date":"2024-06-25","equity":10075.27,"dd":0.0},{"date":"2024-06-30","equity":10123.33,"dd":0.0},{"date":"2024-07-05","equity":10082.23,"dd":0.47},{"date":"2024-07-10","equity":10082.23,"dd":0.47},{"date":"2024-07-15","equity":10082.23,"dd":0.47},{"date":"2024-07-20","equity":10082.23,"dd":0.47},{"date":"2024-07-25","equity":10082.23,"dd":0.47},{"date":"2024-07-30","equity":10082.23,"dd":0.47},{"date":"2024-08-04","equity":10082.23,"dd":0.47},{"date":"2024-08-09","equity":10082.23,"dd":0.47},{"date":"2024-08-14","equity":10082.23,"dd":0.47},{"date":"2024-08-19","equity":10082.23,"dd":0.47},{"date":"2024-08-24","equity":10082.23,"dd":0.47},{"date":"2024-08-29","equity":10082.23,"dd":0.47},{"date":"2024-09-03","equity":10082.23,"dd":0.47},{"date":"2024-09-08","equity":10082.23,"dd":0.47},{"date":"2024-09-13","equity":10082.23,"dd":0.47},{"date":"2024-09-18","equity":10082.23,"dd":0.47},{"date":"2024-09-23","equity":10082.23,"dd":0.47},{"date":"2024-09-28","equity":10082.23,"dd":0.47},{"date":"2024-10-03","equity":10082.23,"dd":0.47},{"date":"2024-10-08","equity":10082.23,"dd":0.47},{"date":"2024-10-13","equity":10082.23,"dd":0.47},{"date":"2024-10-18","equity":10082.23,"dd":0.47},{"date":"2024-10-23","equity":10082.23,"dd":0.47},{"date":"2024-10-28","equity":10082.23,"dd":0.47},{"date":"2024-11-02","equity":10082.23,"dd":0.47},{"date":"2024-11-07","equity":10082.23,"dd":0.47},{"date":"2024-11-12","equity":10082.23,"dd":0.47},{"date":"2024-11-17","equity":10082.23,"dd":0.47},{"date":"2024-11-22","equity":10082.23,"dd":0.47},{"date":"2024-11-27","equity":10082.23,"dd":0.47},{"date":"2024-12-02","equity":10082.23,"dd":0.47},{"date":"2024-12-07","equity":10082.23,"dd":0.47},{"date":"2024-12-12","equity":10082.23,"dd":0.47},{"date":"2024-12-17","equity":10082.23,"dd":0.47},{"date":"2024-12-22","equity":10082.23,"dd":0.47},{"date":"2024-12-27","equity":10082.23,"dd":0.47},{"date":"2025-01-01","equity":10082.23,"dd":0.47},{"date":"2025-01-06","equity":10082.23,"dd":0.47},{"date":"2025-01-11","equity":10082.23,"dd":0.47},{"date":"2025-01-16","equity":10082.23,"dd":0.47},{"date":"2025-01-21","equity":10082.23,"dd":0.47},{"date":"2025-01-26","equity":10082.23,"dd":0.47},{"date":"2025-01-31","equity":10082.23,"dd":0.47},{"date":"2025-02-05","equity":10082.23,"dd":0.47},{"date":"2025-02-10","equity":10082.23,"dd":0.47},{"date":"2025-02-15","equity":10082.23,"dd":0.47},{"date":"2025-02-20","equity":10082.23,"dd":0.47},{"date":"2025-02-25","equity":10082.23,"dd":0.47},{"date":"2025-03-02","equity":9880.58,"dd":2.46},{"date":"2025-03-07","equity":9880.58,"dd":2.46},{"date":"2025-03-12","equity":9880.58,"dd":2.46},{"date":"2025-03-17","equity":9880.58,"dd":2.46},{"date":"2025-03-22","equity":9880.58,"dd":2.46},{"date":"2025-03-27","equity":9880.58,"dd":2.46},{"date":"2025-04-01","equity":9880.58,"dd":2.46},{"date":"2025-04-06","equity":9880.58,"dd":2.46},{"date":"2025-04-11","equity":9880.58,"dd":2.46},{"date":"2025-04-16","equity":9880.58,"dd":2.46},{"date":"2025-04-21","equity":9880.58,"dd":2.46},{"date":"2025-04-26","equity":9880.58,"dd":2.46},{"date":"2025-05-01","equity":9880.58,"dd":2.46},{"date":"2025-05-06","equity":9880.58,"dd":2.46},{"date":"2025-05-11","equity":9880.58,"dd":2.46},{"date":"2025-05-16","equity":9880.58,"dd":2.46},{"date":"2025-05-21","equity":9880.58,"dd":2.46},{"date":"2025-05-26","equity":9880.58,"dd":2.46},{"date":"2025-05-31","equity":9880.58,"dd":2.46},{"date":"2025-06-05","equity":9880.58,"dd":2.46},{"date":"2025-06-10","equity":9880.58,"dd":2.46},{"date":"2025-06-15","equity":9880.58,"dd":2.46},{"date":"2025-06-20","equity":9880.58,"dd":2.46},{"date":"2025-06-25","equity":9880.58,"dd":2.46},{"date":"2025-06-30","equity":9880.58,"dd":2.46},{"date":"2025-07-05","equity":9880.58,"dd":2.46},{"date":"2025-07-10","equity":9880.58,"dd":2.46},{"date":"2025-07-15","equity":9880.58,"dd":2.46},{"date":"2025-07-20","equity":9880.58,"dd":2.46},{"date":"2025-07-25","equity":9880.58,"dd":2.46},{"date":"2025-07-30","equity":9880.58,"dd":2.46},{"date":"2025-08-04","equity":9880.58,"dd":2.46},{"date":"2025-08-09","equity":9880.58,"dd":2.46},{"date":"2025-08-14","equity":9880.58,"dd":2.46},{"date":"2025-08-19","equity":9880.58,"dd":2.46},{"date":"2025-08-24","equity":9880.58,"dd":2.46},{"date":"2025-08-29","equity":9880.58,"dd":2.46},{"date":"2025-09-03","equity":9880.58,"dd":2.46},{"date":"2025-09-08","equity":9880.58,"dd":2.46},{"date":"2025-09-13","equity":9880.58,"dd":2.46},{"date":"2025-09-18","equity":9880.58,"dd":2.46},{"date":"2025-09-23","equity":9880.58,"dd":2.46},{"date":"2025-09-28","equity":9880.58,"dd":2.46},{"date":"2025-10-03","equity":9880.58,"dd":2.46},{"date":"2025-10-08","equity":9880.58,"dd":2.46},{"date":"2025-10-13","equity":9880.58,"dd":2.46},{"date":"2025-10-18","equity":9880.58,"dd":2.46},{"date":"2025-10-23","equity":9880.58,"dd":2.46},{"date":"2025-10-28","equity":9880.58,"dd":2.46},{"date":"2025-11-02","equity":9880.58,"dd":2.46},{"date":"2025-11-07","equity":9880.58,"dd":2.46},{"date":"2025-11-12","equity":9880.58,"dd":2.46},{"date":"2025-11-17","equity":9880.58,"dd":2.46},{"date":"2025-11-22","equity":9880.58,"dd":2.46},{"date":"2025-11-27","equity":9880.58,"dd":2.46},{"date":"2025-12-02","equity":9880.58,"dd":2.46},{"date":"2025-12-07","equity":9880.58,"dd":2.46},{"date":"2025-12-12","equity":9880.58,"dd":2.46},{"date":"2025-12-17","equity":9880.58,"dd":2.46},{"date":"2025-12-22","equity":9880.58,"dd":2.46},{"date":"2025-12-27","equity":9880.58,"dd":2.46},{"date":"2026-01-01","equity":9880.58,"dd":2.46},{"date":"2026-01-06","equity":9880.58,"dd":2.46},{"date":"2026-01-11","equity":9880.58,"dd":2.46},{"date":"2026-01-16","equity":9880.58,"dd":2.46},{"date":"2026-01-21","equity":9880.58,"dd":2.46},{"date":"2026-01-26","equity":9880.58,"dd":2.46},{"date":"2026-01-31","equity":9880.58,"dd":2.46},{"date":"2026-02-05","equity":9880.58,"dd":2.46},{"date":"2026-02-10","equity":9880.58,"dd":2.46},{"date":"2026-02-15","equity":9880.58,"dd":2.46},{"date":"2026-02-20","equity":9880.58,"dd":2.46},{"date":"2026-02-25","equity":9880.58,"dd":2.46},{"date":"2026-03-02","equity":9880.58,"dd":2.46},{"date":"2026-03-07","equity":9880.58,"dd":2.46},{"date":"2026-03-12","equity":9880.58,"dd":2.46},{"date":"2026-03-17","equity":9880.58,"dd":2.46},{"date":"2026-03-22","equity":9880.58,"dd":2.46},{"date":"2026-03-27","equity":9880.58,"dd":2.46},{"date":"2026-04-01","equity":9880.58,"dd":2.46},{"date":"2026-04-06","equity":9880.58,"dd":2.46},{"date":"2026-04-11","equity":9880.58,"dd":2.46},{"date":"2026-04-16","equity":9880.58,"dd":2.46},{"date":"2026-04-21","equity":9880.58,"dd":2.46},{"date":"2026-04-26","equity":9880.58,"dd":2.46},{"date":"2026-05-01","equity":9880.58,"dd":2.46},{"date":"2026-05-06","equity":9880.58,"dd":2.46},{"date":"2026-05-11","equity":9880.58,"dd":2.46},{"date":"2026-05-16","equity":9880.58,"dd":2.46},{"date":"2026-05-21","equity":9880.58,"dd":2.46},{"date":"2026-05-26","equity":9880.58,"dd":2.46},{"date":"2026-05-31","equity":9880.58,"dd":2.46},{"date":"2026-06-05","equity":9880.58,"dd":2.46}],"adaptive_curve":[{"date":"2024-04-01","buy":30,"sell":70,"regime":"normal"},{"date":"2024-04-04","buy":30,"sell":70,"regime":"normal"},{"date":"2024-04-07","buy":30,"sell":70,"regime":"normal"},{"date":"2024-04-10","buy":30,"sell":70,"regime":"normal"},{"date":"2024-04-13","buy":25,"sell":75,"regime":"high"},{"date":"2024-04-16","buy":25,"sell":75,"regime":"high"},{"date":"2024-04-19","buy":25,"sell":75,"regime":"high"},{"date":"2024-04-22","buy":30,"sell":70,"regime":"normal"},{"date":"2024-04-25","buy":30,"sell":70,"regime":"normal"},{"date":"2024-04-28","buy":30,"sell":70,"regime":"normal"},{"date":"2024-05-01","buy":30,"sell":70,"regime":"normal"},{"date":"2024-05-04","buy":30,"sell":70,"regime":"normal"},{"date":"2024-05-07","buy":30,"sell":70,"regime":"normal"},{"date":"2024-05-10","buy":30,"sell":70,"regime":"normal"},{"date":"2024-05-13","buy":30,"sell":70,"regime":"normal"},{"date":"2024-05-16","buy":30,"sell":70,"regime":"normal"},{"date":"2024-05-19","buy":30,"sell":70,"regime":"low"},{"date":"2024-05-22","buy":30,"sell":70,"regime":"low"},{"date":"2024-05-25","buy":30,"sell":70,"regime":"low"},{"date":"2024-05-28","buy":30,"sell":70,"regime":"low"},{"date":"2024-05-31","buy":30,"sell":70,"regime":"low"},{"date":"2024-06-03","buy":30,"sell":70,"regime":"low"},{"date":"2024-06-06","buy":30,"sell":70,"regime":"low"},{"date":"2024-06-09","buy":30,"sell":70,"regime":"low"},{"date":"2024-06-12","buy":30,"sell":70,"regime":"low"},{"date":"2024-06-15","buy":30,"sell":70,"regime":"low"},{"date":"2024-06-18","buy":30,"sell":70,"regime":"low"},{"date":"2024-06-21","buy":30,"sell":70,"regime":"low"},{"date":"2024-06-24","buy":30,"sell":70,"regime":"normal"},{"date":"2024-06-27","buy":30,"sell":70,"regime":"normal"},{"date":"2024-06-30","buy":30,"sell":70,"regime":"low"},{"date":"2024-07-03","buy":30,"sell":70,"regime":"normal"},{"date":"2024-07-06","buy":30,"sell":70,"regime":"normal"},{"date":"2024-07-09","buy":30,"sell":70,"regime":"normal"},{"date":"2024-07-12","buy":30,"sell":70,"regime":"normal"},{"date":"2024-07-15","buy":30,"sell":70,"regime":"normal"},{"date":"2024-07-18","buy":30,"sell":70,"regime":"normal"},{"date":"2024-07-21","buy":30,"sell":70,"regime":"normal"},{"date":"2024-07-24","buy":30,"sell":70,"regime":"normal"},{"date":"2024-07-27","buy":30,"sell":70,"regime":"normal"},{"date":"2024-07-30","buy":30,"sell":70,"regime":"normal"},{"date":"2024-08-02","buy":25,"sell":75,"regime":"high"},{"date":"2024-08-05","buy":25,"sell":75,"regime":"high"},{"date":"2024-08-08","buy":25,"sell":75,"regime":"high"},{"date":"2024-08-11","buy":25,"sell":75,"regime":"high"},{"date":"2024-08-14","buy":25,"sell":75,"regime":"high"},{"date":"2024-08-17","buy":25,"sell":75,"regime":"high"},{"date":"2024-08-20","buy":25,"sell":75,"regime":"high"},{"date":"2024-08-23","buy":25,"sell":75,"regime":"high"},{"date":"2024-08-26","buy":30,"sell":70,"regime":"normal"},{"date":"2024-08-29","buy":30,"sell":70,"regime":"normal"},{"date":"2024-09-01","buy":30,"sell":70,"regime":"normal"},{"date":"2024-09-04","buy":30,"sell":70,"regime":"normal"},{"date":"2024-09-07","buy":25,"sell":75,"regime":"high"},{"date":"2024-09-10","buy":30,"sell":70,"regime":"normal"},{"date":"2024-09-13","buy":30,"sell":70,"regime":"normal"},{"date":"2024-09-16","buy":30,"sell":70,"regime":"normal"},{"date":"2024-09-19","buy":30,"sell":70,"regime":"normal"},{"date":"2024-09-22","buy":30,"sell":70,"regime":"low"},{"date":"2024-09-25","buy":30,"sell":70,"regime":"low"},{"date":"2024-09-28","buy":30,"sell":70,"regime":"low"},{"date":"2024-10-01","buy":30,"sell":70,"regime":"low"},{"date":"2024-10-04","buy":30,"sell":70,"regime":"low"},{"date":"2024-10-07","buy":30,"sell":70,"regime":"low"},{"date":"2024-10-10","buy":30,"sell":70,"regime":"low"},{"date":"2024-10-13","buy":30,"sell":70,"regime":"low"},{"date":"2024-10-16","buy":30,"sell":70,"regime":"low"},{"date":"2024-10-19","buy":30,"sell":70,"regime":"low"},{"date":"2024-10-22","buy":30,"sell":70,"regime":"low"},{"date":"2024-10-25","buy":30,"sell":70,"regime":"low"},{"date":"2024-10-28","buy":30,"sell":70,"regime":"low"},{"date":"2024-10-31","buy":30,"sell":70,"regime":"low"},{"date":"2024-11-03","buy":30,"sell":70,"regime":"low"},{"date":"2024-11-06","buy":30,"sell":70,"regime":"normal"},{"date":"2024-11-09","buy":30,"sell":70,"regime":"normal"},{"date":"2024-11-12","buy":30,"sell":70,"regime":"normal"},{"date":"2024-11-15","buy":30,"sell":70,"regime":"normal"},{"date":"2024-11-18","buy":30,"sell":70,"regime":"normal"},{"date":"2024-11-21","buy":30,"sell":70,"regime":"normal"},{"date":"2024-11-24","buy":30,"sell":70,"regime":"normal"},{"date":"2024-11-27","buy":30,"sell":70,"regime":"normal"},{"date":"2024-11-30","buy":30,"sell":70,"regime":"normal"},{"date":"2024-12-03","buy":30,"sell":70,"regime":"normal"},{"date":"2024-12-06","buy":25,"sell":75,"regime":"high"},{"date":"2024-12-09","buy":25,"sell":75,"regime":"high"},{"date":"2024-12-12","buy":25,"sell":75,"regime":"high"},{"date":"2024-12-15","buy":30,"sell":70,"regime":"normal"},{"date":"2024-12-18","buy":25,"sell":75,"regime":"high"},{"date":"2024-12-21","buy":25,"sell":75,"regime":"high"},{"date":"2024-12-24","buy":25,"sell":75,"regime":"high"},{"date":"2024-12-27","buy":25,"sell":75,"regime":"high"},{"date":"2024-12-30","buy":25,"sell":75,"regime":"high"},{"date":"2025-01-02","buy":30,"sell":70,"regime":"normal"},{"date":"2025-01-05","buy":30,"sell":70,"regime":"normal"},{"date":"2025-01-08","buy":30,"sell":70,"regime":"normal"},{"date":"2025-01-11","buy":30,"sell":70,"regime":"normal"},{"date":"2025-01-14","buy":30,"sell":70,"regime":"normal"},{"date":"2025-01-17","buy":30,"sell":70,"regime":"normal"},{"date":"2025-01-20","buy":25,"sell":75,"regime":"high"},{"date":"2025-01-23","buy":25,"sell":75,"regime":"high"},{"date":"2025-01-26","buy":30,"sell":70,"regime":"normal"},{"date":"2025-01-29","buy":30,"sell":70,"regime":"normal"},{"date":"2025-02-01","buy":30,"sell":70,"regime":"normal"},{"date":"2025-02-04","buy":25,"sell":75,"regime":"high"},{"date":"2025-02-07","buy":25,"sell":75,"regime":"high"},{"date":"2025-02-10","buy":30,"sell":70,"regime":"normal"},{"date":"2025-02-13","buy":30,"sell":70,"regime":"normal"},{"date":"2025-02-16","buy":30,"sell":70,"regime":"low"},{"date":"2025-02-19","buy":30,"sell":70,"regime":"low"},{"date":"2025-02-22","buy":30,"sell":70,"regime":"low"},{"date":"2025-02-25","buy":30,"sell":70,"regime":"normal"},{"date":"2025-02-28","buy":25,"sell":75,"regime":"high"},{"date":"2025-03-03","buy":25,"sell":75,"regime":"high"},{"date":"2025-03-06","buy":25,"sell":75,"regime":"high"},{"date":"2025-03-09","buy":25,"sell":75,"regime":"high"},{"date":"2025-03-12","buy":25,"sell":75,"regime":"high"},{"date":"2025-03-15","buy":25,"sell":75,"regime":"high"},{"date":"2025-03-18","buy":25,"sell":75,"regime":"high"},{"date":"2025-03-21","buy":25,"sell":75,"regime":"high"},{"date":"2025-03-24","buy":30,"sell":70,"regime":"normal"},{"date":"2025-03-27","buy":30,"sell":70,"regime":"normal"},{"date":"2025-03-30","buy":30,"sell":70,"regime":"normal"},{"date":"2025-04-02","buy":30,"sell":70,"regime":"normal"},{"date":"2025-04-05","buy":30,"sell":70,"regime":"normal"},{"date":"2025-04-08","buy":25,"sell":75,"regime":"high"},{"date":"2025-04-11","buy":25,"sell":75,"regime":"high"},{"date":"2025-04-14","buy":30,"sell":70,"regime":"normal"},{"date":"2025-04-17","buy":30,"sell":70,"regime":"normal"},{"date":"2025-04-20","buy":30,"sell":70,"regime":"low"},{"date":"2025-04-23","buy":30,"sell":70,"regime":"low"},{"date":"2025-04-26","buy":30,"sell":70,"regime":"low"},{"date":"2025-04-29","buy":30,"sell":70,"regime":"low"},{"date":"2025-05-02","buy":30,"sell":70,"regime":"low"},{"date":"2025-05-05","buy":30,"sell":70,"regime":"low"},{"date":"2025-05-08","buy":30,"sell":70,"regime":"low"},{"date":"2025-05-11","buy":30,"sell":70,"regime":"low"},{"date":"2025-05-14","buy":30,"sell":70,"regime":"low"},{"date":"2025-05-17","buy":30,"sell":70,"regime":"low"},{"date":"2025-05-20","buy":30,"sell":70,"regime":"low"},{"date":"2025-05-23","buy":30,"sell":70,"regime":"normal"},{"date":"2025-05-26","buy":30,"sell":70,"regime":"low"},{"date":"2025-05-29","buy":30,"sell":70,"regime":"normal"},{"date":"2025-06-01","buy":30,"sell":70,"regime":"low"},{"date":"2025-06-04","buy":30,"sell":70,"regime":"low"},{"date":"2025-06-07","buy":30,"sell":70,"regime":"normal"},{"date":"2025-06-10","buy":30,"sell":70,"regime":"low"},{"date":"2025-06-13","buy":30,"sell":70,"regime":"normal"},{"date":"2025-06-16","buy":30,"sell":70,"regime":"low"},{"date":"2025-06-19","buy":30,"sell":70,"regime":"low"},{"date":"2025-06-22","buy":30,"sell":70,"regime":"normal"},{"date":"2025-06-25","buy":30,"sell":70,"regime":"normal"},{"date":"2025-06-28","buy":30,"sell":70,"regime":"low"},{"date":"2025-07-01","buy":30,"sell":70,"regime":"low"},{"date":"2025-07-04","buy":30,"sell":70,"regime":"low"},{"date":"2025-07-07","buy":30,"sell":70,"regime":"low"},{"date":"2025-07-10","buy":30,"sell":70,"regime":"low"},{"date":"2025-07-13","buy":30,"sell":70,"regime":"low"},{"date":"2025-07-16","buy":30,"sell":70,"regime":"low"},{"date":"2025-07-19","buy":30,"sell":70,"regime":"low"},{"date":"2025-07-22","buy":30,"sell":70,"regime":"normal"},{"date":"2025-07-25","buy":30,"sell":70,"regime":"normal"},{"date":"2025-07-28","buy":30,"sell":70,"regime":"low"},{"date":"2025-07-31","buy":30,"sell":70,"regime":"low"},{"date":"2025-08-03","buy":30,"sell":70,"regime":"low"},{"date":"2025-08-06","buy":30,"sell":70,"regime":"low"},{"date":"2025-08-09","buy":30,"sell":70,"regime":"low"},{"date":"2025-08-12","buy":30,"sell":70,"regime":"low"},{"date":"2025-08-15","buy":30,"sell":70,"regime":"normal"},{"date":"2025-08-18","buy":30,"sell":70,"regime":"normal"},{"date":"2025-08-21","buy":30,"sell":70,"regime":"normal"},{"date":"2025-08-24","buy":25,"sell":75,"regime":"high"},{"date":"2025-08-27","buy":25,"sell":75,"regime":"high"},{"date":"2025-08-30","buy":25,"sell":75,"regime":"high"},{"date":"2025-09-02","buy":30,"sell":70,"regime":"normal"},{"date":"2025-09-05","buy":30,"sell":70,"regime":"normal"},{"date":"2025-09-08","buy":30,"sell":70,"regime":"normal"},{"date":"2025-09-11","buy":30,"sell":70,"regime":"normal"},{"date":"2025-09-14","buy":30,"sell":70,"regime":"low"},{"date":"2025-09-17","buy":30,"sell":70,"regime":"low"},{"date":"2025-09-20","buy":30,"sell":70,"regime":"low"},{"date":"2025-09-23","buy":30,"sell":70,"regime":"low"},{"date":"2025-09-26","buy":30,"sell":70,"regime":"low"},{"date":"2025-09-29","buy":30,"sell":70,"regime":"low"},{"date":"2025-10-02","buy":30,"sell":70,"regime":"low"},{"date":"2025-10-05","buy":30,"sell":70,"regime":"normal"},{"date":"2025-10-08","buy":30,"sell":70,"regime":"normal"},{"date":"2025-10-11","buy":25,"sell":75,"regime":"high"},{"date":"2025-10-14","buy":25,"sell":75,"regime":"high"},{"date":"2025-10-17","buy":25,"sell":75,"regime":"high"},{"date":"2025-10-20","buy":25,"sell":75,"regime":"high"},{"date":"2025-10-23","buy":25,"sell":75,"regime":"high"},{"date":"2025-10-26","buy":25,"sell":75,"regime":"high"},{"date":"2025-10-29","buy":25,"sell":75,"regime":"high"},{"date":"2025-11-01","buy":30,"sell":70,"regime":"normal"},{"date":"2025-11-04","buy":25,"sell":75,"regime":"high"},{"date":"2025-11-07","buy":25,"sell":75,"regime":"high"},{"date":"2025-11-10","buy":30,"sell":70,"regime":"normal"},{"date":"2025-11-13","buy":25,"sell":75,"regime":"high"},{"date":"2025-11-16","buy":25,"sell":75,"regime":"high"},{"date":"2025-11-19","buy":25,"sell":75,"regime":"high"},{"date":"2025-11-22","buy":25,"sell":75,"regime":"high"},{"date":"2025-11-25","buy":25,"sell":75,"regime":"high"},{"date":"2025-11-28","buy":25,"sell":75,"regime":"high"},{"date":"2025-12-01","buy":25,"sell":75,"regime":"high"},{"date":"2025-12-04","buy":25,"sell":75,"regime":"high"},{"date":"2025-12-07","buy":30,"sell":70,"regime":"normal"},{"date":"2025-12-10","buy":30,"sell":70,"regime":"normal"},{"date":"2025-12-13","buy":30,"sell":70,"regime":"normal"},{"date":"2025-12-16","buy":30,"sell":70,"regime":"normal"},{"date":"2025-12-19","buy":30,"sell":70,"regime":"normal"},{"date":"2025-12-22","buy":30,"sell":70,"regime":"normal"},{"date":"2025-12-25","buy":30,"sell":70,"regime":"normal"},{"date":"2025-12-28","buy":30,"sell":70,"regime":"low"},{"date":"2025-12-31","buy":30,"sell":70,"regime":"low"},{"date":"2026-01-03","buy":30,"sell":70,"regime":"low"},{"date":"2026-01-06","buy":30,"sell":70,"regime":"low"},{"date":"2026-01-09","buy":30,"sell":70,"regime":"low"},{"date":"2026-01-12","buy":30,"sell":70,"regime":"low"},{"date":"2026-01-15","buy":30,"sell":70,"regime":"low"},{"date":"2026-01-18","buy":30,"sell":70,"regime":"low"},{"date":"2026-01-21","buy":30,"sell":70,"regime":"normal"},{"date":"2026-01-24","buy":30,"sell":70,"regime":"low"},{"date":"2026-01-27","buy":30,"sell":70,"regime":"low"},{"date":"2026-01-30","buy":30,"sell":70,"regime":"normal"},{"date":"2026-02-02","buy":30,"sell":70,"regime":"normal"},{"date":"2026-02-05","buy":25,"sell":75,"regime":"high"},{"date":"2026-02-08","buy":25,"sell":75,"regime":"high"},{"date":"2026-02-11","buy":25,"sell":75,"regime":"high"},{"date":"2026-02-14","buy":25,"sell":75,"regime":"high"},{"date":"2026-02-17","buy":25,"sell":75,"regime":"high"},{"date":"2026-02-20","buy":25,"sell":75,"regime":"high"},{"date":"2026-02-23","buy":25,"sell":75,"regime":"high"},{"date":"2026-02-26","buy":30,"sell":70,"regime":"normal"},{"date":"2026-03-01","buy":25,"sell":75,"regime":"high"},{"date":"2026-03-04","buy":25,"sell":75,"regime":"high"},{"date":"2026-03-07","buy":25,"sell":75,"regime":"high"},{"date":"2026-03-10","buy":30,"sell":70,"regime":"normal"},{"date":"2026-03-13","buy":30,"sell":70,"regime":"normal"},{"date":"2026-03-16","buy":30,"sell":70,"regime":"normal"},{"date":"2026-03-19","buy":30,"sell":70,"regime":"normal"},{"date":"2026-03-22","buy":30,"sell":70,"regime":"normal"},{"date":"2026-03-25","buy":30,"sell":70,"regime":"normal"},{"date":"2026-03-28","buy":30,"sell":70,"regime":"normal"},{"date":"2026-03-31","buy":30,"sell":70,"regime":"normal"},{"date":"2026-04-03","buy":30,"sell":70,"regime":"normal"},{"date":"2026-04-06","buy":30,"sell":70,"regime":"normal"},{"date":"2026-04-09","buy":30,"sell":70,"regime":"normal"},{"date":"2026-04-12","buy":30,"sell":70,"regime":"normal"},{"date":"2026-04-15","buy":30,"sell":70,"regime":"low"},{"date":"2026-04-18","buy":30,"sell":70,"regime":"low"},{"date":"2026-04-21","buy":30,"sell":70,"regime":"low"},{"date":"2026-04-24","buy":30,"sell":70,"regime":"low"},{"date":"2026-04-27","buy":30,"sell":70,"regime":"low"},{"date":"2026-04-30","buy":30,"sell":70,"regime":"low"},{"date":"2026-05-03","buy":30,"sell":70,"regime":"low"},{"date":"2026-05-06","buy":30,"sell":70,"regime":"low"},{"date":"2026-05-09","buy":30,"sell":70,"regime":"low"},{"date":"2026-05-12","buy":30,"sell":70,"regime":"low"},{"date":"2026-05-15","buy":30,"sell":70,"regime":"low"},{"date":"2026-05-18","buy":30,"sell":70,"regime":"low"},{"date":"2026-05-21","buy":30,"sell":70,"regime":"low"},{"date":"2026-05-24","buy":30,"sell":70,"regime":"low"},{"date":"2026-05-27","buy":30,"sell":70,"regime":"low"},{"date":"2026-05-30","buy":30,"sell":70,"regime":"low"},{"date":"2026-06-02","buy":30,"sell":70,"regime":"normal"},{"date":"2026-06-05","buy":30,"sell":70,"regime":"normal"},{"date":"2026-06-08","buy":30,"sell":70,"regime":"normal"}],"fng_curve":[{"date":"2026-03-12","value":18,"classification":"Extreme Fear"},{"date":"2026-03-13","value":15,"classification":"Extreme Fear"},{"date":"2026-03-14","value":16,"classification":"Extreme Fear"},{"date":"2026-03-15","value":15,"classification":"Extreme Fear"},{"date":"2026-03-16","value":23,"classification":"Extreme Fear"},{"date":"2026-03-17","value":28,"classification":"Fear"},{"date":"2026-03-18","value":26,"classification":"Fear"},{"date":"2026-03-19","value":23,"classification":"Extreme Fear"},{"date":"2026-03-20","value":11,"classification":"Extreme Fear"},{"date":"2026-03-21","value":12,"classification":"Extreme Fear"},{"date":"2026-03-22","value":10,"classification":"Extreme Fear"},{"date":"2026-03-23","value":8,"classification":"Extreme Fear"},{"date":"2026-03-24","value":11,"classification":"Extreme Fear"},{"date":"2026-03-25","value":14,"classification":"Extreme Fear"},{"date":"2026-03-26","value":10,"classification":"Extreme Fear"},{"date":"2026-03-27","value":13,"classification":"Extreme Fear"},{"date":"2026-03-28","value":12,"classification":"Extreme Fear"},{"date":"2026-03-29","value":9,"classification":"Extreme Fear"},{"date":"2026-03-30","value":8,"classification":"Extreme Fear"},{"date":"2026-03-31","value":11,"classification":"Extreme Fear"},{"date":"2026-04-01","value":8,"classification":"Extreme Fear"},{"date":"2026-04-02","value":12,"classification":"Extreme Fear"},{"date":"2026-04-03","value":9,"classification":"Extreme Fear"},{"date":"2026-04-04","value":11,"classification":"Extreme Fear"},{"date":"2026-04-05","value":12,"classification":"Extreme Fear"},{"date":"2026-04-06","value":13,"classification":"Extreme Fear"},{"date":"2026-04-07","value":11,"classification":"Extreme Fear"},{"date":"2026-04-08","value":17,"classification":"Extreme Fear"},{"date":"2026-04-09","value":14,"classification":"Extreme Fear"},{"date":"2026-04-10","value":16,"classification":"Extreme Fear"},{"date":"2026-04-11","value":15,"classification":"Extreme Fear"},{"date":"2026-04-12","value":16,"classification":"Extreme Fear"},{"date":"2026-04-13","value":12,"classification":"Extreme Fear"},{"date":"2026-04-14","value":21,"classification":"Extreme Fear"},{"date":"2026-04-15","value":23,"classification":"Extreme Fear"},{"date":"2026-04-16","value":23,"classification":"Extreme Fear"},{"date":"2026-04-17","value":21,"classification":"Extreme Fear"},{"date":"2026-04-18","value":26,"classification":"Fear"},{"date":"2026-04-19","value":27,"classification":"Fear"},{"date":"2026-04-20","value":29,"classification":"Fear"},{"date":"2026-04-21","value":33,"classification":"Fear"},{"date":"2026-04-22","value":32,"classification":"Fear"},{"date":"2026-04-23","value":46,"classification":"Fear"},{"date":"2026-04-24","value":39,"classification":"Fear"},{"date":"2026-04-25","value":31,"classification":"Fear"},{"date":"2026-04-26","value":33,"classification":"Fear"},{"date":"2026-04-27","value":47,"classification":"Neutral"},{"date":"2026-04-28","value":33,"classification":"Fear"},{"date":"2026-04-29","value":26,"classification":"Fear"},{"date":"2026-04-30","value":29,"classification":"Fear"},{"date":"2026-05-01","value":26,"classification":"Fear"},{"date":"2026-05-02","value":39,"classification":"Fear"},{"date":"2026-05-03","value":47,"classification":"Neutral"},{"date":"2026-05-04","value":40,"classification":"Fear"},{"date":"2026-05-05","value":50,"classification":"Neutral"},{"date":"2026-05-06","value":46,"classification":"Fear"},{"date":"2026-05-07","value":47,"classification":"Neutral"},{"date":"2026-05-08","value":38,"classification":"Fear"},{"date":"2026-05-09","value":38,"classification":"Fear"},{"date":"2026-05-10","value":47,"classification":"Neutral"},{"date":"2026-05-11","value":48,"classification":"Neutral"},{"date":"2026-05-12","value":49,"classification":"Neutral"},{"date":"2026-05-13","value":42,"classification":"Fear"},{"date":"2026-05-14","value":34,"classification":"Fear"},{"date":"2026-05-15","value":43,"classification":"Fear"},{"date":"2026-05-16","value":31,"classification":"Fear"},{"date":"2026-05-17","value":27,"classification":"Fear"},{"date":"2026-05-18","value":28,"classification":"Fear"},{"date":"2026-05-19","value":25,"classification":"Extreme Fear"},{"date":"2026-05-20","value":27,"classification":"Fear"},{"date":"2026-05-21","value":29,"classification":"Fear"},{"date":"2026-05-22","value":28,"classification":"Fear"},{"date":"2026-05-23","value":28,"classification":"Fear"},{"date":"2026-05-24","value":25,"classification":"Extreme Fear"},{"date":"2026-05-25","value":30,"classification":"Fear"},{"date":"2026-05-26","value":34,"classification":"Fear"},{"date":"2026-05-27","value":25,"classification":"Extreme Fear"},{"date":"2026-05-28","value":22,"classification":"Extreme Fear"},{"date":"2026-05-29","value":23,"classification":"Extreme Fear"},{"date":"2026-05-30","value":23,"classification":"Extreme Fear"},{"date":"2026-05-31","value":28,"classification":"Fear"},{"date":"2026-06-01","value":29,"classification":"Fear"},{"date":"2026-06-02","value":23,"classification":"Extreme Fear"},{"date":"2026-06-03","value":11,"classification":"Extreme Fear"},{"date":"2026-06-04","value":12,"classification":"Extreme Fear"},{"date":"2026-06-05","value":12,"classification":"Extreme Fear"},{"date":"2026-06-06","value":12,"classification":"Extreme Fear"},{"date":"2026-06-07","value":12,"classification":"Extreme Fear"},{"date":"2026-06-08","value":8,"classification":"Extreme Fear"},{"date":"2026-06-09","value":10,"classification":"Extreme Fear"}],"decision_log":[{"date":"2026-05-21","signal":"HOLD","note":"RSI 47.9 in [30\u201370] (low vol), F&G 29 \u2192 HOLD"},{"date":"2026-05-22","signal":"HOLD","note":"RSI 40.5 in [30\u201370] (low vol), F&G 28 \u2192 HOLD"},{"date":"2026-05-23","signal":"HOLD","note":"RSI 45.7 in [30\u201370] (low vol), F&G 28 \u2192 HOLD"},{"date":"2026-05-24","signal":"HOLD","note":"RSI 47.0 in [30\u201370] (low vol), F&G 25 \u2192 HOLD"},{"date":"2026-05-25","signal":"HOLD","note":"RSI 48.1 in [30\u201370] (low vol), F&G 30 \u2192 HOLD"},{"date":"2026-05-26","signal":"HOLD","note":"RSI 42.9 in [30\u201370] (low vol), F&G 34 \u2192 HOLD"},{"date":"2026-05-27","signal":"HOLD","note":"RSI 38.2 in [30\u201370] (low vol), F&G 25 \u2192 HOLD"},{"date":"2026-05-28","signal":"HOLD","note":"RSI 35.8 in [30\u201370] (low vol), F&G 22 \u2192 HOLD"},{"date":"2026-05-29","signal":"HOLD","note":"RSI 35.4 in [30\u201370] (normal vol), F&G 23 \u2192 HOLD"},{"date":"2026-05-30","signal":"HOLD","note":"RSI 37.6 in [30\u201370] (low vol), F&G 23 \u2192 HOLD"},{"date":"2026-05-31","signal":"HOLD","note":"RSI 36.9 in [30\u201370] (low vol), F&G 28 \u2192 HOLD"},{"date":"2026-06-01","signal":"HOLD","note":"RSI 30.4 in [30\u201370] (normal vol), F&G 29 \u2192 HOLD"},{"date":"2026-06-02","signal":"HOLD","note":"RSI 21.9 in [30\u201370] (normal vol), F&G 23 \u2192 HOLD"},{"date":"2026-06-03","signal":"HOLD","note":"RSI 18.7 in [30\u201370] (normal vol), F&G 11 \u2192 HOLD"},{"date":"2026-06-04","signal":"HOLD","note":"RSI 18.4 in [30\u201370] (normal vol), F&G 12 \u2192 HOLD"},{"date":"2026-06-05","signal":"HOLD","note":"RSI 15.6 in [30\u201370] (normal vol), F&G 12 \u2192 HOLD"},{"date":"2026-06-06","signal":"HOLD","note":"RSI 15.5 in [30\u201370] (normal vol), F&G 12 \u2192 HOLD"},{"date":"2026-06-07","signal":"HOLD","note":"RSI 26.6 in [30\u201370] (normal vol), F&G 12 \u2192 HOLD"},{"date":"2026-06-08","signal":"HOLD","note":"RSI 26.2 in [30\u201370] (normal vol), F&G 8 \u2192 HOLD"},{"date":"2026-06-09","signal":"HOLD","note":"RSI 25.5 in [30\u201370] (normal vol), F&G 10 \u2192 HOLD"}],"news":[{"title":"OpenAI confidentially files to go public in the US","source":"cointelegraph","published":"Tue, 09 Jun 2026 02:02:33 +0000","sentiment":"neutral","score":0},{"title":"Forehead tattoos and alcohol dares: Inside the dark underbelly of crypto's memecoin craze","source":"coindesk","published":"Mon, 08 Jun 2026 22:58:02 +0000","sentiment":"neutral","score":0},{"title":"OpenAI Wants to Kill the Chatbot It Invented and Turn It Into a Superapp","source":"decrypt","published":"Mon, 08 Jun 2026 22:00:57 +0000","sentiment":"positive","score":1},{"title":"OpenAI Confirms Confidential IPO Filing, Keeps Timing Open","source":"decrypt","published":"Mon, 08 Jun 2026 21:45:58 +0000","sentiment":"neutral","score":0},{"title":"Coinbase Executive: Massive Institutions Are Buying Bitcoin\u2019s Crash","source":"bitcoinmagazine","published":"Mon, 08 Jun 2026 21:29:19 +0000","sentiment":"negative","score":-1},{"title":"China's Xiaomi MiMo Is Now 15X Faster Than ChatGPT and Claude","source":"decrypt","published":"Mon, 08 Jun 2026 20:57:07 +0000","sentiment":"neutral","score":0},{"title":"Bored Ape Maker Yuga Labs Rescues Dozens of Ethereum NFTs From Exploit","source":"decrypt","published":"Mon, 08 Jun 2026 20:54:45 +0000","sentiment":"negative","score":-1},{"title":"Active tokenized RWAs surge almost 600% despite crypto pullback: Binance","source":"cointelegraph","published":"Mon, 08 Jun 2026 20:53:35 +0000","sentiment":"positive","score":2},{"title":"Apple Unveils Upgraded Siri as Tech Giant's Big AI Push Finally Arrives","source":"decrypt","published":"Mon, 08 Jun 2026 20:43:03 +0000","sentiment":"positive","score":1},{"title":"Bitcoin Is 'Boring' AI-Hungry Retail Investors, But Bernstein Still Sees $150K This Year","source":"decrypt","published":"Mon, 08 Jun 2026 19:46:06 +0000","sentiment":"neutral","score":0},{"title":"Influential research firm that caused AI stock meltdown lays out Hyperliquid as 'compelling' idea","source":"coindesk","published":"Mon, 08 Jun 2026 18:41:04 +0000","sentiment":"neutral","score":0},{"title":"Bitcoin Price Holds Near $63,000 as Analysts Say Its Store-of-Value Thesis Remains Intact","source":"bitcoinmagazine","published":"Mon, 08 Jun 2026 18:24:23 +0000","sentiment":"neutral","score":0},{"title":"'Best thesis' for Bitcoin accumulation surfaces despite current downside risk: Analyst","source":"cointelegraph","published":"Mon, 08 Jun 2026 18:11:29 +0000","sentiment":"positive","score":1},{"title":"FTX Founder Sam Bankman-Fried Has Formally Filed for a Pardon From President Trump","source":"decrypt","published":"Mon, 08 Jun 2026 18:08:19 +0000","sentiment":"negative","score":-2},{"title":"We Asked 7 AI Agents to Predict the 2026 World Cup: Here's What They Said","source":"decrypt","published":"Mon, 08 Jun 2026 18:04:40 +0000","sentiment":"neutral","score":0}],"news_summary":{"positive":17,"negative":11,"label":"bullish","pct":21.4},"sentiment_today":{"value":10,"classification":"Extreme Fear"}}</script>
+<script>
+/* Dashboard renderer — data is embedded in the script tag above */
+const DATA = JSON.parse(document.getElementById('DATA_PLACEHOLDER').textContent);
+const M = DATA.meta, C = DATA.current, P = DATA.performance;
+
+const fmt = (n, d=2) => n == null ? '—' : Number(n).toLocaleString('en-US', {minimumFractionDigits:d, maximumFractionDigits:d});
+const fmt$ = (n, d=2) => n == null ? '—' : '$' + fmt(n, d);
+const fmtPct = (n) => n == null ? '—' : (n >= 0 ? '+' : '') + fmt(n, 2) + '%';
+const cls = (n) => n >= 0 ? 'green' : 'red';
+
+document.getElementById('updatedPill').textContent = 'Updated ' + M.end_date;
+document.getElementById('footerMeta').textContent = `${M.bars} daily bars · ${M.start_date} → ${M.end_date}`;
+
+// ===== Signal card =====
+const sc = document.getElementById('signalCard');
+sc.classList.add(C.signal_color);
+document.getElementById('signalBadge').textContent = C.signal;
+document.getElementById('signalExpl').textContent = C.explanation;
+document.getElementById('mPrice').textContent = fmt$(C.price);
+document.getElementById('mRsi').textContent = fmt(C.rsi, 2);
+document.getElementById('mRsi').className = 'val ' + (C.rsi < 30 ? 'green' : C.rsi > 70 ? 'red' : 'yellow');
+document.getElementById('mMa').textContent = fmt$(C.ma200);
+document.getElementById('mRisk').textContent = C.risk_level;
+document.getElementById('mRiskNote').textContent = C.risk_note;
+
+// ===== Position sizing =====
+document.getElementById('psBal').textContent = fmt$(M.initial_balance, 0);
+document.getElementById('psRisk').textContent = fmt$(C.risk_dollars);
+document.getElementById('psQty').textContent = fmt(C.suggested_qty, 6) + ' BTC';
+document.getElementById('psNotional').textContent = fmt$(C.suggested_notional);
+document.getElementById('psEntry').textContent = fmt$(C.price);
+document.getElementById('psSl').textContent = fmt$(C.stop_loss_price);
+document.getElementById('psTp').textContent = fmt$(C.take_profit_price);
+
+// ===== Headline metrics =====
+const totalEl = document.getElementById('pTotal');
+totalEl.textContent = fmtPct(P.total_return_pct);
+totalEl.classList.add(cls(P.total_return_pct));
+document.getElementById('pTotalSub').textContent = `${fmt$(P.initial_balance,0)} → ${fmt$(P.final_equity,0)}`;
+document.getElementById('pWin').textContent = fmt(P.win_rate, 1) + '%';
+document.getElementById('pWinSub').textContent = `${P.wins}W / ${P.losses}L · ${P.trades} trades`;
+document.getElementById('pDd').textContent = '−' + fmt(P.max_drawdown_pct, 2) + '%';
+const pf = P.profit_factor;
+document.getElementById('pPf').textContent = (typeof pf === 'number' ? fmt(pf, 2) : pf);
+document.getElementById('pPfSub').textContent = `expectancy ${fmt$(P.expectancy)}/trade`;
+
+// ===== Trades table =====
+const tb = document.getElementById('tradesBody');
+if (DATA.trades.length === 0) {
+  tb.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">No closed trades during backtest period.</td></tr>';
+} else {
+  DATA.trades.forEach(t => {
+    const tag = t.reason.includes('Take') ? 'tp' : t.reason.includes('Stop') && t.reason.includes('Trailing') ? 'tr' : t.reason.includes('Stop') ? 'sl' : 'sell';
+    tb.insertAdjacentHTML('beforeend', `
+      <tr>
+        <td>${t.entry_date}</td>
+        <td>${t.exit_date}</td>
+        <td>${fmt$(t.entry,2)}</td>
+        <td>${fmt$(t.exit,2)}</td>
+        <td>${fmt(t.qty,4)}</td>
+        <td class="${cls(t.pnl)}">${fmt$(t.pnl)}</td>
+        <td class="${cls(t.pnl_pct)}">${fmtPct(t.pnl_pct)}</td>
+        <td><span class="tag ${tag}">${t.reason}</span></td>
+      </tr>`);
+  });
+}
+
+if (DATA.open_position) {
+  const o = DATA.open_position;
+  document.getElementById('openPosBox').innerHTML = `
+    <div class="card" style="background:var(--panel2);margin:0">
+      <h2 style="margin:0 0 8px 0">Open Position</h2>
+      <div class="kvgrid">
+        <div class="k">Entered</div><div class="v">${o.entry_date} @ ${fmt$(o.entry)}</div>
+        <div class="k">Quantity</div><div class="v">${fmt(o.qty,6)} BTC</div>
+        <div class="k">Current stop</div><div class="v red">${fmt$(o.stop)}</div>
+        <div class="k">Take profit</div><div class="v green">${fmt$(o.take_profit)}</div>
+        <div class="k">Unrealized PnL</div><div class="v ${cls(o.unrealized_pnl)}">${fmt$(o.unrealized_pnl)} (${fmtPct(o.unrealized_pct)})</div>
+      </div>
+    </div>`;
+}
+
+// ===== Decision log =====
+const lg = document.getElementById('decisionLog');
+DATA.decision_log.slice().reverse().forEach(e => {
+  const cl = e.signal === 'BUY' ? 'buy' : e.signal === 'SELL' ? 'sell' : 'hold';
+  lg.insertAdjacentHTML('beforeend', `
+    <div class="log-item">
+      <div class="d">${e.date}</div>
+      <div><span class="tag ${cl}">${e.signal}</span></div>
+      <div>${e.note}</div>
+    </div>`);
+});
+
+// ===== Performance table =====
+const pt = document.getElementById('perfTable');
+const rows = [
+  ['Initial balance', fmt$(P.initial_balance,0)],
+  ['Final equity', fmt$(P.final_equity)],
+  ['Total PnL', `<span class="${cls(P.total_pnl)}">${fmt$(P.total_pnl)}</span>`],
+  ['Total return', `<span class="${cls(P.total_return_pct)}">${fmtPct(P.total_return_pct)}</span>`],
+  ['Total trades', P.trades],
+  ['Wins / Losses', `<span class="green">${P.wins}W</span> / <span class="red">${P.losses}L</span>`],
+  ['Win rate', fmt(P.win_rate,2) + '%'],
+  ['Average win', `<span class="green">${fmt$(P.avg_win)}</span>`],
+  ['Average loss', `<span class="red">${fmt$(P.avg_loss)}</span>`],
+  ['Gross profit', `<span class="green">${fmt$(P.gross_profit)}</span>`],
+  ['Gross loss', `<span class="red">${fmt$(P.gross_loss)}</span>`],
+  ['Profit factor', typeof P.profit_factor === 'number' ? fmt(P.profit_factor,2) : P.profit_factor],
+  ['Expectancy / trade', fmt$(P.expectancy)],
+  ['Max drawdown', `<span class="red">−${fmt(P.max_drawdown_pct,2)}%</span>`],
+  ['Backtest period', `${M.start_date} → ${M.end_date}`],
+  ['Bars', M.bars + ' daily candles'],
+];
+rows.forEach(([k,v]) => pt.insertAdjacentHTML('beforeend', `<div class="k">${k}</div><div class="v">${v}</div>`));
+
+// ===== v2: Market intelligence panels =====
+const fngVal = C.fng_value;
+const fngLbl = C.fng_label;
+document.getElementById('fngBig').textContent = fngVal != null ? fngVal : '—';
+document.getElementById('fngLabel').textContent = fngLbl || '—';
+const fngColor = fngVal == null ? 'var(--muted)' : fngVal < 25 ? 'var(--red)' : fngVal < 45 ? 'var(--yellow)' : fngVal < 60 ? '#9ca3af' : fngVal < 75 ? '#84cc16' : 'var(--green)';
+document.getElementById('fngBig').style.color = fngColor;
+document.getElementById('fngLabel').style.color = fngColor;
+if (fngVal != null) document.getElementById('fngMarker').style.left = fngVal + '%';
+
+// F&G sparkline (90 days)
+const fngLabels = DATA.fng_curve.map(p => p.date);
+const fngVals   = DATA.fng_curve.map(p => p.value);
+new Chart(document.getElementById('fngChart'), {
+  type: 'line',
+  data: { labels: fngLabels, datasets: [
+    { label:'F&G', data: fngVals, borderColor:'#a78bfa', backgroundColor:'rgba(167,139,250,0.10)', borderWidth:1.5, pointRadius:0, tension:0.2, fill:true }
+  ]},
+  options: {
+    responsive:true, maintainAspectRatio:false,
+    scales:{ x:{ticks:{maxTicksLimit:5,autoSkip:true},grid:{display:false}},
+             y:{min:0,max:100,ticks:{stepSize:25}} },
+    plugins:{legend:{display:false}}
+  }
+});
+
+// News
+const ns = DATA.news_summary;
+document.getElementById('newsPctBig').textContent = (ns.pct>=0?'+':'') + ns.pct + '%';
+document.getElementById('newsPctBig').className = ns.pct>0?'green':ns.pct<0?'red':'';
+document.getElementById('newsPos').textContent = '+ ' + ns.positive + ' bullish';
+document.getElementById('newsNeg').textContent = '− ' + ns.negative + ' bearish';
+const nlt = document.getElementById('newsLabelTag');
+nlt.textContent = ns.label.toUpperCase();
+nlt.className = 'tag ' + (ns.label==='bullish'?'buy':ns.label==='bearish'?'sell':'hold');
+const newsAdjTag = document.getElementById('newsAdj');
+newsAdjTag.textContent = 'filter: ' + (C.news_adj || 'neutral');
+const newsList = document.getElementById('newsList');
+DATA.news.forEach(n => {
+  const cl = n.sentiment === 'negative' ? 'red' : n.sentiment === 'positive' ? 'green' : '';
+  newsList.insertAdjacentHTML('beforeend',
+    `<div style="padding:6px 0;border-bottom:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em">
+        <span>${n.source}</span><span class="${cl}">${n.sentiment}${n.score!==0?' '+(n.score>0?'+':'')+n.score:''}</span>
+      </div>
+      <div style="margin-top:2px">${n.title}</div>
+    </div>`);
+});
+
+// Adaptive thresholds card
+document.getElementById('aRsiBuy').textContent  = C.adaptive_rsi_buy;
+document.getElementById('aRsiSell').textContent = C.adaptive_rsi_sell;
+const regimeMap = {high:'<span class="red">HIGH</span>', low:'<span class="green">LOW</span>', normal:'<span class="yellow">NORMAL</span>', warmup:'warmup'};
+document.getElementById('aRegime').innerHTML = regimeMap[C.regime] || C.regime;
+document.getElementById('aAtr').textContent = C.atr_pct != null ? fmt(C.atr_pct,2) + '%' : '—';
+const mult = (C.regime === 'high' ? 0.7 : 1.0) * (fngVal<25?1.25:fngVal>=60?0:fngVal>=45?0.75:1.0);
+document.getElementById('aMult').textContent = fmt(mult,2) + 'x';
+document.getElementById('aTrail').textContent = (M.trail_pct*100) + '%' + (C.regime==='high'?' × 0.7':'');
+document.getElementById('aDdGuard').innerHTML = '<span class="green">Armed</span> (halt &gt; 7%, resume &lt; 3%)';
+
+// Update Strategy Rules header to v2 (already done in HTML)
+
+// ===== Charts =====
+Chart.defaults.color = '#94a3b8';
+Chart.defaults.borderColor = '#1f2a3f';
+Chart.defaults.font.family = '-apple-system,BlinkMacSystemFont,Inter,Segoe UI,sans-serif';
+
+const labels = DATA.chart.map(c => c.date);
+const close  = DATA.chart.map(c => c.close);
+const ma     = DATA.chart.map(c => c.ma200);
+const rsi    = DATA.chart.map(c => c.rsi);
+
+new Chart(document.getElementById('priceChart'), {
+  type: 'line',
+  data: { labels, datasets: [
+    { label:'BTC Close', data:close, borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.1)', borderWidth:1.5, pointRadius:0, tension:0.1, fill:true },
+    { label:'MA200',     data:ma,    borderColor:'#f59e0b', borderWidth:1.5, pointRadius:0, tension:0.1 },
+  ]},
+  options: {
+    responsive:true, maintainAspectRatio:false,
+    interaction:{mode:'index',intersect:false},
+    scales:{
+      x:{ticks:{maxTicksLimit:8,autoSkip:true},grid:{display:false}},
+      y:{ticks:{callback:v=>'$'+(v/1000).toFixed(0)+'k'}}
+    },
+    plugins:{legend:{position:'top',align:'end',labels:{boxWidth:10,boxHeight:10,padding:14}}}
+  }
+});
+
+new Chart(document.getElementById('rsiChart'), {
+  type: 'line',
+  data: { labels, datasets: [
+    { label:'RSI(14)', data:rsi, borderColor:'#a78bfa', borderWidth:1.5, pointRadius:0, tension:0.1, fill:false }
+  ]},
+  options: {
+    responsive:true, maintainAspectRatio:false,
+    scales:{
+      x:{ticks:{maxTicksLimit:8,autoSkip:true},grid:{display:false}},
+      y:{min:0,max:100,ticks:{stepSize:20}}
+    },
+    plugins:{
+      legend:{display:false},
+      annotation:{}
+    }
+  },
+  plugins:[{
+    id:'rsiBands',
+    beforeDraw(c){
+      const {ctx, chartArea:{left,right}, scales:{y}} = c;
+      const y70 = y.getPixelForValue(70), y30 = y.getPixelForValue(30);
+      ctx.save();
+      ctx.fillStyle='rgba(239,68,68,0.07)'; ctx.fillRect(left, y.getPixelForValue(100), right-left, y70 - y.getPixelForValue(100));
+      ctx.fillStyle='rgba(16,185,129,0.07)'; ctx.fillRect(left, y30, right-left, y.getPixelForValue(0) - y30);
+      ctx.strokeStyle='rgba(239,68,68,0.4)'; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(left,y70); ctx.lineTo(right,y70); ctx.stroke();
+      ctx.strokeStyle='rgba(16,185,129,0.4)'; ctx.beginPath(); ctx.moveTo(left,y30); ctx.lineTo(right,y30); ctx.stroke();
+      ctx.restore();
+    }
+  }]
+});
+
+// Equity curve
+const eqLabels = DATA.equity_curve.map(e => e.date);
+const eqVals   = DATA.equity_curve.map(e => e.equity);
+new Chart(document.getElementById('equityChart'), {
+  type: 'line',
+  data: { labels: eqLabels, datasets: [
+    { label:'Equity', data:eqVals, borderColor:'#10b981', backgroundColor:'rgba(16,185,129,0.12)', borderWidth:1.5, pointRadius:0, tension:0.1, fill:true }
+  ]},
+  options: {
+    responsive:true, maintainAspectRatio:false,
+    scales:{ x:{ticks:{maxTicksLimit:6,autoSkip:true},grid:{display:false}}, y:{ticks:{callback:v=>'$'+(v/1000).toFixed(1)+'k'}} },
+    plugins:{legend:{display:false}}
+  }
+});
+// ===== Agent Controls (live position-sizing recalculator) =====
+const STATE = {
+  balance: M.initial_balance,
+  riskPct: M.risk_pct * 100,
+  slPct:   M.sl_pct   * 100,
+  tpPct:   M.tp_pct   * 100,
+  price:   C.price,
+};
+
+const cBal = document.getElementById('cBal');
+const cRisk= document.getElementById('cRisk');
+const cSl  = document.getElementById('cSl');
+const cTp  = document.getElementById('cTp');
+const cPos = document.getElementById('cPos');
+const cSlTp= document.getElementById('cSlTp');
+
+function recomputeSizing(){
+  STATE.balance = parseFloat(cBal.value)  || 0;
+  STATE.riskPct = parseFloat(cRisk.value) || 0;
+  STATE.slPct   = parseFloat(cSl.value)   || 0;
+  STATE.tpPct   = parseFloat(cTp.value)   || 0;
+  const riskUSD = STATE.balance * STATE.riskPct/100;
+  const lossPerUnit = STATE.price * STATE.slPct/100;
+  const qty = lossPerUnit > 0 ? riskUSD / lossPerUnit : 0;
+  const notional = qty * STATE.price;
+  const slPrice = STATE.price * (1 - STATE.slPct/100);
+  const tpPrice = STATE.price * (1 + STATE.tpPct/100);
+  cPos.innerHTML  = `${fmt(qty,6)} BTC · ${fmt$(notional,0)} (${fmt$(riskUSD,2)} at risk)`;
+  cSlTp.innerHTML = `<span class="red">${fmt$(slPrice)}</span> / <span class="green">${fmt$(tpPrice)}</span>`;
+  return { riskUSD, qty, notional, slPrice, tpPrice };
+}
+function setDefaults(){
+  cBal.value  = M.initial_balance;
+  cRisk.value = (M.risk_pct*100).toFixed(1);
+  cSl.value   = (M.sl_pct*100).toFixed(1);
+  cTp.value   = (M.tp_pct*100).toFixed(1);
+  recomputeSizing();
+}
+setDefaults();
+[cBal,cRisk,cSl,cTp].forEach(el => el.addEventListener('input', recomputeSizing));
+
+document.getElementById('btnApply').addEventListener('click', () => {
+  const s = recomputeSizing();
+  document.getElementById('psBal').textContent      = fmt$(STATE.balance,0);
+  document.getElementById('psRisk').textContent     = fmt$(s.riskUSD);
+  document.getElementById('psQty').textContent      = fmt(s.qty,6) + ' BTC';
+  document.getElementById('psNotional').textContent = fmt$(s.notional);
+  document.getElementById('psSl').textContent       = fmt$(s.slPrice);
+  document.getElementById('psTp').textContent       = fmt$(s.tpPrice);
+  pushBot(`✓ Applied: balance ${fmt$(STATE.balance,0)}, risk ${STATE.riskPct}%, SL ${STATE.slPct}%, TP ${STATE.tpPct}%. Position sizing on the main dashboard now reflects these inputs.`);
+});
+document.getElementById('btnReset').addEventListener('click', () => { setDefaults(); pushBot('Controls reset to strategy defaults.'); });
+document.getElementById('btnRun').addEventListener('click', () => handle('Run backtest'));
+document.getElementById('btnClear').addEventListener('click', () => { document.getElementById('chatMsgs').innerHTML=''; greet(); });
+
+// ===== Chat engine (deterministic intent matcher over embedded data) =====
+const chatMsgs = document.getElementById('chatMsgs');
+const chatForm = document.getElementById('chatForm');
+const chatInput = document.getElementById('chatInput');
+
+function pushUser(text){
+  const div = document.createElement('div'); div.className='msg user'; div.textContent=text;
+  chatMsgs.appendChild(div); chatMsgs.scrollTop = chatMsgs.scrollHeight;
+}
+function pushBot(html){
+  const div = document.createElement('div'); div.className='msg bot'; div.innerHTML=html;
+  chatMsgs.appendChild(div); chatMsgs.scrollTop = chatMsgs.scrollHeight;
+}
+function kvBlock(rows){
+  return `<div class="reply-block">${rows.map(([k,v])=>`<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('')}</div>`;
+}
+
+function intent(q){
+  const s = q.toLowerCase().trim();
+  if (!s) return 'empty';
+  if (/^(help|menu|commands|what.*do|what can you)/.test(s)) return 'help';
+  if (/(should.*buy|buy.*now|buy btc|enter.*long|go long|time to buy)/.test(s)) return 'buy';
+  if (/(should.*sell|sell.*now|exit|close.*position|take.*profit)/.test(s)) return 'sell';
+  if (/(run.*backtest|backtest|simulate|historical|performance)/.test(s)) return 'backtest';
+  if (/(risk|drawdown|exposure|max loss)/.test(s)) return 'risk';
+  if (/(sentiment|fear|greed|f&g|fng)/.test(s)) return 'sentiment';
+  if (/(news|headline|article)/.test(s)) return 'news';
+  if (/(adaptive|regime|volatility|threshold|atr)/.test(s)) return 'adaptive';
+  if (/(explain.*signal|current signal|why.*hold|why.*buy|why.*sell|what.*signal)/.test(s)) return 'explain';
+  if (/(position size|how much|quantity|sizing|how many btc)/.test(s)) return 'sizing';
+  if (/(trade history|trades|journal|log)/.test(s)) return 'trades';
+  if (/(price|rsi|ma200|moving average|indicator)/.test(s)) return 'snapshot';
+  if (/(strategy|rules|how.*work)/.test(s)) return 'strategy';
+  if (/(hi|hello|hey|gm|sup)/.test(s)) return 'greet';
+  return 'unknown';
+}
+
+function answerSentiment(){
+  const v = C.fng_value, l = C.fng_label;
+  const gate = v != null && v >= 60 ? '<span class="red">BUY GATE BLOCKED</span>' : '<span class="green">BUY GATE OPEN</span>';
+  return `<b>Fear &amp; Greed Index</b>: ${v} (${l}). ${gate}<br>The agent uses F&amp;G as a contrarian confluence filter — it boosts position size 1.25× during Extreme Fear (&lt;25), runs standard sizing in Fear, halves it in Neutral (45–60), and blocks new buys entirely in Greed (≥60).` + kvBlock([
+    ['Current value', `${v} · ${l}`],
+    ['Sentiment regime', v < 25 ? 'Extreme Fear (boost 1.25×)' : v < 45 ? 'Fear (normal size)' : v < 60 ? 'Neutral (½ size)' : v < 75 ? 'Greed (blocked)' : 'Extreme Greed (blocked + early exit)'],
+    ['Buy gate', gate],
+  ]);
+}
+
+function answerNews(){
+  const ns = DATA.news_summary;
+  const top = DATA.news.slice(0,5).map(n => `<div class="row"><span class="k">${n.source}</span><span class="v ${n.sentiment==='positive'?'green':n.sentiment==='negative'?'red':''}">${n.title.slice(0,72)}</span></div>`).join('');
+  return `<b>News sentiment</b>: <span class="${ns.label==='bullish'?'green':ns.label==='bearish'?'red':'yellow'}">${ns.label.toUpperCase()}</span> · net polarity ${ns.pct>=0?'+':''}${ns.pct}% (${ns.positive} bullish vs ${ns.negative} bearish keywords across 50 headlines).<br>The news filter currently sits in <b>${C.news_adj}</b> mode — it blocks new buys if polarity falls below −40% and reduces size between −15% and −40%.` + `<div class="reply-block">${top}</div>`;
+}
+
+function answerAdaptive(){
+  return `<b>Adaptive RSI thresholds</b><br>Current volatility regime is <b>${C.regime.toUpperCase()}</b> (ATR/price = ${fmt(C.atr_pct,2)}%). The agent ranks ATR% over a rolling 90-day window — above 80th percentile triggers the storm regime (tighter bands, smaller size, tighter trail); below 20th percentile is the calm regime.` + kvBlock([
+    ['Regime',           C.regime.toUpperCase()],
+    ['Buy threshold',    `RSI < ${C.adaptive_rsi_buy}`],
+    ['Sell threshold',   `RSI > ${C.adaptive_rsi_sell}`],
+    ['ATR(14) %',        fmt(C.atr_pct,2) + '%'],
+    ['Trail multiplier', C.regime === 'high' ? '0.7× (tightened)' : '1.0×'],
+    ['Size multiplier',  C.regime === 'high' ? '0.7×' : '1.0×'],
+  ]);
+}
+
+function answerBuy(){
+  const sig = C.signal, r = C.rsi, p = C.price, m = C.ma200;
+  const aboveMA = p > m;
+  let verdict, color;
+  if (sig === 'BUY')      { verdict = '<b class="green">YES — buy condition met.</b>'; color='green'; }
+  else if (sig === 'SELL'){ verdict = '<b class="red">NO — current signal is SELL. Exit longs if held.</b>'; color='red'; }
+  else                    { verdict = '<b class="yellow">NO — current signal is HOLD.</b>'; color='yellow'; }
+  const reason = r < 30 && aboveMA ? 'Both conditions met (RSI oversold AND uptrend intact).'
+              : r < 30 && !aboveMA ? 'RSI is oversold but price is below MA200 → trend filter blocks the entry. Buying oversold downtrends is the most common way this strategy fails.'
+              : r > 70             ? 'RSI is overbought — historically the worst time to add longs.'
+              : 'RSI is in the neutral 30–70 zone. Wait for an oversold dip inside the uptrend.';
+  return `${verdict}<br><br>${reason}` + kvBlock([
+    ['Price',  fmt$(p)],
+    ['RSI(14)', fmt(r,2)],
+    ['MA(200)', fmt$(m)],
+    ['Price vs MA200', (aboveMA?'<span class="green">+':'<span class="red">') + fmt((p/m-1)*100,2) + '%</span>'],
+    ['Strategy verdict', `<span class="${color}">${sig}</span>`],
+  ]);
+}
+
+function answerSell(){
+  const r = C.rsi;
+  if (r > 70) return `<b class="red">YES — RSI ${fmt(r,2)} is above 70.</b> The agent exits all longs on a SELL signal. ` + kvBlock([['RSI(14)',fmt(r,2)],['Threshold','> 70'],['Action','Close long at market']]);
+  return `<b class="yellow">No sell signal yet.</b> RSI(14) = ${fmt(r,2)}, which is below the 70 sell threshold. The agent only exits on RSI > 70, a stop-loss hit, take-profit hit, or the trailing stop. ` + kvBlock([['RSI(14)',fmt(r,2)],['Sell threshold','70'],['Distance to trigger',fmt(70-r,2)+' pts']]);
+}
+
+function answerBacktest(){
+  const pf = (typeof P.profit_factor === 'number') ? fmt(P.profit_factor,2) : P.profit_factor;
+  return `<b>Backtest re-run — ${M.bars} daily bars (${M.start_date} → ${M.end_date}).</b><br>The deterministic engine replays the strategy bar-by-bar with no look-ahead. Exit priority: trailing-stop → take-profit → signal.` + kvBlock([
+    ['Initial balance', fmt$(P.initial_balance,0)],
+    ['Final equity',    fmt$(P.final_equity)],
+    ['Total return',    `<span class="${cls(P.total_return_pct)}">${fmtPct(P.total_return_pct)}</span>`],
+    ['Trades',          `${P.trades} (${P.wins}W / ${P.losses}L)`],
+    ['Win rate',        fmt(P.win_rate,2)+'%'],
+    ['Profit factor',   pf],
+    ['Expectancy',      fmt$(P.expectancy)+' / trade'],
+    ['Max drawdown',    `<span class="red">−${fmt(P.max_drawdown_pct,2)}%</span>`],
+  ]) + `<div style="margin-top:8px;font-size:12px;color:var(--muted)">Tip: scroll up to the Equity Curve and Trade History panels for the full picture.</div>`;
+}
+
+function answerRisk(){
+  const s = recomputeSizing();
+  const riskNote = C.risk_note;
+  return `<b>Risk analysis</b><br>${riskNote}<br>The 2% rule means a single losing trade can never wipe more than 2% off the account before the stop fires. With the current strategy 1:3 risk/reward, the breakeven win-rate is just 25%.` + kvBlock([
+    ['Risk level',          C.risk_level],
+    ['Per-trade risk',      `${STATE.riskPct}% = ${fmt$(s.riskUSD)}`],
+    ['Stop distance',       `${STATE.slPct}% (${fmt$(STATE.price*STATE.slPct/100)})`],
+    ['Target distance',     `${STATE.tpPct}% (${fmt$(STATE.price*STATE.tpPct/100)})`],
+    ['R/R ratio',           `1 : ${fmt(STATE.tpPct/STATE.slPct,2)}`],
+    ['Trailing stop',       '3% below highest since entry'],
+    ['Realised max DD',     `<span class="red">−${fmt(P.max_drawdown_pct,2)}%</span>`],
+    ['Breakeven win-rate',  fmt(100*STATE.slPct/(STATE.slPct+STATE.tpPct),1)+'%'],
+  ]);
+}
+
+function answerExplain(){
+  return `<b>Why the agent is currently ${C.signal}</b><br>${C.explanation}` + kvBlock([
+    ['Signal',  `<span class="${C.signal_color}">${C.signal}</span>`],
+    ['Price',   fmt$(C.price)],
+    ['RSI(14)', fmt(C.rsi,2)],
+    ['MA(200)', fmt$(C.ma200)],
+    ['Volatility regime', C.regime.toUpperCase()],
+    ['Adaptive BUY band',  `< ${C.adaptive_rsi_buy}`],
+    ['Adaptive SELL band', `> ${C.adaptive_rsi_sell}`],
+    ['Fear &amp; Greed',   `${C.fng_value} · ${C.fng_label}`],
+    ['News polarity',      (C.news_pct>=0?'+':'') + C.news_pct + '% (' + C.news_label + ')'],
+    ['Sentiment gate',     C.fng_value >= 60 ? '<span class="red">BLOCKED</span>' : '<span class="green">PASS</span>'],
+  ]);
+}
+
+function answerSizing(){
+  const s = recomputeSizing();
+  return `<b>Position sizing (live)</b><br>The 2%-risk rule converts to a fixed BTC quantity once you fix the stop distance.` + kvBlock([
+    ['Balance',          fmt$(STATE.balance,0)],
+    ['Risk % per trade', STATE.riskPct + '%'],
+    ['Dollar risk',      fmt$(s.riskUSD)],
+    ['Entry price',      fmt$(STATE.price)],
+    ['Stop loss',        `<span class="red">${fmt$(s.slPrice)}</span>`],
+    ['Take profit',      `<span class="green">${fmt$(s.tpPrice)}</span>`],
+    ['Quantity',         fmt(s.qty,6) + ' BTC'],
+    ['Notional exposure',fmt$(s.notional)],
+  ]) + `<div style="margin-top:6px;font-size:12px;color:var(--muted)">Adjust the controls on the right to recompute.</div>`;
+}
+
+function answerTrades(){
+  if (!DATA.trades.length) return `No closed trades during the backtest window. The strategy is intentionally selective — it only fires when RSI &lt; 30 AND price &gt; MA200.`;
+  const rows = DATA.trades.map((t,i) =>
+    `<div class="row"><span class="k">${t.entry_date} → ${t.exit_date}</span><span class="v ${cls(t.pnl)}">${fmt$(t.pnl)} (${fmtPct(t.pnl_pct)}) · ${t.reason}</span></div>`
+  ).join('');
+  return `<b>Trade journal — ${DATA.trades.length} closed trades</b><div class="reply-block">${rows}</div>` +
+    `<div style="margin-top:6px;font-size:12px;color:var(--muted)">Full table is in the Trade History panel above.</div>`;
+}
+
+function answerSnapshot(){
+  return `<b>Live market snapshot</b>` + kvBlock([
+    ['Symbol',  M.symbol + ' · ' + M.timeframe],
+    ['Price',   fmt$(C.price)],
+    ['RSI(14)', fmt(C.rsi,2) + (C.rsi<30?' (oversold)':C.rsi>70?' (overbought)':' (neutral)')],
+    ['MA(200)', fmt$(C.ma200)],
+    ['Trend',   C.price>C.ma200 ? '<span class="green">Uptrend (price > MA200)</span>' : '<span class="red">Downtrend (price < MA200)</span>'],
+    ['Signal',  `<span class="${C.signal_color}">${C.signal}</span>`],
+  ]);
+}
+
+function answerStrategy(){
+  return `<b>How the strategy works</b><br>The agent runs a momentum-filtered mean-reversion play: it only buys oversold pullbacks (RSI &lt; 30) when the broader trend is still up (price &gt; MA200). It sells on overbought readings (RSI &gt; 70), or earlier if a stop fires.` + kvBlock([
+    ['Entry',  'RSI(14) < 30 AND close > MA(200)'],
+    ['Exit (signal)',    'RSI(14) > 70'],
+    ['Stop loss',        '5% below entry'],
+    ['Take profit',      '15% above entry'],
+    ['Trailing stop',    '3% below highest price since entry'],
+    ['Position sizing',  'risk = 2% of balance / stop distance'],
+    ['Timeframe',        'daily candles'],
+  ]);
+}
+
+function answerHelp(){
+  return `<b>I can answer questions like:</b>` + kvBlock([
+    ['"Should I buy BTC?"',     'live trade decision (with all filters)'],
+    ['"Explain current signal"','plain-English reasoning + confluence'],
+    ['"Sentiment"',             'Fear &amp; Greed analysis + gate status'],
+    ['"News"',                  'aggregated headline sentiment scoring'],
+    ['"Adaptive"',              'current volatility regime + RSI bands'],
+    ['"Run backtest"',          'replay strategy on 1000 bars'],
+    ['"Show risk analysis"',    'drawdown, sizing, R/R'],
+    ['"Show trade history"',    'closed-trade journal'],
+    ['"Position size"',         'quantity for current price'],
+    ['"Strategy"',              'rule summary'],
+  ]);
+}
+
+function handle(q){
+  pushUser(q);
+  const i = intent(q);
+  let reply;
+  switch(i){
+    case 'buy':       reply = answerBuy(); break;
+    case 'sell':      reply = answerSell(); break;
+    case 'backtest':  reply = answerBacktest(); break;
+    case 'risk':      reply = answerRisk(); break;
+    case 'explain':   reply = answerExplain(); break;
+    case 'sizing':    reply = answerSizing(); break;
+    case 'trades':    reply = answerTrades(); break;
+    case 'snapshot':  reply = answerSnapshot(); break;
+    case 'strategy':  reply = answerStrategy(); break;
+    case 'sentiment': reply = answerSentiment(); break;
+    case 'news':      reply = answerNews(); break;
+    case 'adaptive':  reply = answerAdaptive(); break;
+    case 'help':      reply = answerHelp(); break;
+    case 'greet':     reply = `Hi — I'm the BTC RSI + 200 MA agent. Ask me <i>"Should I buy BTC?"</i>, <i>"Run backtest"</i>, <i>"Show risk analysis"</i>, or <i>"Explain current signal"</i>.`; break;
+    case 'empty':     return;
+    default:          reply = `I didn't catch that. Try one of the quick-action buttons above, or type <i>help</i> for a full list of what I can answer.`;
+  }
+  setTimeout(()=>pushBot(reply), 120);
+}
+
+chatForm.addEventListener('submit', e => {
+  e.preventDefault();
+  const q = chatInput.value.trim();
+  if (!q) return;
+  chatInput.value = '';
+  handle(q);
+});
+document.querySelectorAll('.qa-btn').forEach(b => b.addEventListener('click', () => handle(b.dataset.q)));
+
+function greet(){
+  pushBot(`Hi — I'm the <b>BTC RSI + 200 MA Trading Agent</b>. The current signal is <span class="${C.signal_color}"><b>${C.signal}</b></span> at ${fmt$(C.price)} (RSI ${fmt(C.rsi,2)}, MA200 ${fmt$(C.ma200)}).<br><br>Ask me anything, or use the quick-action buttons above.`);
+}
+greet();
+// ===== Execution Engine (paper broker, closes perception→decision→execution→risk loop) =====
+const EX_BARS = DATA.chart.filter(b => b.rsi != null && b.ma200 != null);
+const EX_INIT = M.initial_balance;
+const EX_STATE = {
+  balance: EX_INIT,
+  position: null,   // { qty, entry, stop, initStop, tp, highest, entryBar }
+  log: [],          // {time, type, msg}
+  bar: 0,
+  running: false,
+  timer: null,
+};
+
+const $exBal = document.getElementById('exBal');
+const $exPos = document.getElementById('exPos');
+const $exUpnl = document.getElementById('exUpnl');
+const $exBar = document.getElementById('exBar');
+const $exProg = document.getElementById('exProg');
+const $exStatus = document.getElementById('exStatus');
+const $orderLog = document.getElementById('orderLog');
+const $exTick = document.getElementById('exTick');
+const $exAuto = document.getElementById('exAuto');
+const $exPause = document.getElementById('exPause');
+const $exFlat = document.getElementById('exFlat');
+const $exReset = document.getElementById('exReset');
+const $exSpeed = document.getElementById('exSpeed');
+
+function exLog(type, msg){
+  const time = EX_STATE.bar < EX_BARS.length ? EX_BARS[EX_STATE.bar].date : '—';
+  EX_STATE.log.unshift({time, type, msg});
+  if (EX_STATE.log.length > 200) EX_STATE.log.length = 200;
+  renderLog();
+}
+function renderLog(){
+  $orderLog.innerHTML = EX_STATE.log.map(e =>
+    `<div class="order-row ${e.type}"><span class="t">${e.time}</span><span class="e">${e.type.toUpperCase()}</span><span>${e.msg}</span></div>`
+  ).join('') || '<div style="color:var(--muted);text-align:center;padding:20px">No orders yet. Click <b>Step 1 bar</b> or <b>Auto-run</b>.</div>';
+}
+function renderState(){
+  $exBal.textContent = fmt$(EX_STATE.balance, 2);
+  $exBar.textContent = `${EX_STATE.bar} / ${EX_BARS.length}`;
+  $exProg.style.width = (100 * EX_STATE.bar / EX_BARS.length).toFixed(1) + '%';
+  if (EX_STATE.position){
+    const last = EX_BARS[Math.min(EX_STATE.bar, EX_BARS.length-1)];
+    const px = last ? last.close : EX_STATE.position.entry;
+    const upnl = (px - EX_STATE.position.entry) * EX_STATE.position.qty;
+    $exPos.innerHTML = `<span class="green">LONG</span> ${fmt(EX_STATE.position.qty,5)} BTC @ ${fmt$(EX_STATE.position.entry)}`;
+    $exUpnl.innerHTML = `<span class="${cls(upnl)}">${fmt$(upnl)}</span>`;
+  } else {
+    $exPos.textContent = 'Flat';
+    $exUpnl.textContent = '$0.00';
+  }
+}
+
+const SL = M.sl_pct, TP = M.tp_pct, TR = M.trail_pct, RP = M.risk_pct;
+
+function executeBar(){
+  if (EX_STATE.bar >= EX_BARS.length){ stopAuto(); $exStatus.textContent='Replay complete'; return false; }
+  const b = EX_BARS[EX_STATE.bar];
+  const close = b.close, rsi = b.rsi, ma = b.ma200;
+
+  // PERCEIVE
+  if (EX_STATE.bar === 0 || EX_STATE.bar % 50 === 0)
+    exLog('info', `Perceive · price ${fmt$(close)}, RSI ${fmt(rsi,1)}, MA200 ${fmt$(ma)}`);
+
+  // MANAGE OPEN POSITION first (risk before new entries)
+  if (EX_STATE.position){
+    const p = EX_STATE.position;
+    // Trailing stop ratchet
+    if (close > p.highest){
+      p.highest = close;
+      const newTrail = p.highest * (1 - TR);
+      if (newTrail > p.stop){
+        p.stop = newTrail;
+        exLog('trail', `Trailing stop ratchet → ${fmt$(p.stop)} (3% below new high ${fmt$(p.highest)})`);
+      }
+    }
+    // Exit checks: stop > TP > signal (worst-case ordering using close)
+    if (close <= p.stop){
+      const reason = p.stop > p.initStop ? 'trailing stop' : 'stop loss';
+      const fillPx = p.stop;
+      const pnl = (fillPx - p.entry) * p.qty;
+      EX_STATE.balance += p.qty * fillPx;
+      exLog(p.stop>p.initStop?'trail':'stop', `Filled · ${reason.toUpperCase()} @ ${fmt$(fillPx)} · PnL ${fmt$(pnl)} (${fmtPct((fillPx/p.entry-1)*100)})`);
+      EX_STATE.position = null;
+    } else if (close >= p.tp){
+      const pnl = (p.tp - p.entry) * p.qty;
+      EX_STATE.balance += p.qty * p.tp;
+      exLog('tp', `Filled · TAKE PROFIT @ ${fmt$(p.tp)} · PnL ${fmt$(pnl)} (${fmtPct((p.tp/p.entry-1)*100)})`);
+      EX_STATE.position = null;
+    } else if (rsi > 70){
+      const pnl = (close - p.entry) * p.qty;
+      EX_STATE.balance += p.qty * close;
+      exLog('signal', `SELL signal · RSI ${fmt(rsi,1)} > 70 · exit @ ${fmt$(close)} · PnL ${fmt$(pnl)} (${fmtPct((close/p.entry-1)*100)})`);
+      EX_STATE.position = null;
+    }
+  }
+
+  // DECIDE + EXECUTE (entry)
+  if (!EX_STATE.position && rsi < 30 && close > ma){
+    exLog('info', `Decide · RSI ${fmt(rsi,1)} < 30 AND price > MA200 → BUY signal`);
+    const riskUSD = EX_STATE.balance * RP;
+    const lossPerUnit = close * SL;
+    let qty = riskUSD / lossPerUnit;
+    let cost = qty * close;
+    if (cost > EX_STATE.balance){ qty = EX_STATE.balance / close; cost = EX_STATE.balance; }
+    EX_STATE.balance -= cost;
+    const stop = close * (1 - SL);
+    const tp   = close * (1 + TP);
+    EX_STATE.position = { qty, entry: close, stop, initStop: stop, tp, highest: close, entryBar: EX_STATE.bar };
+    exLog('buy', `MARKET_BUY ${fmt(qty,5)} BTC @ ${fmt$(close)} · notional ${fmt$(cost)} · risk ${fmt$(riskUSD)}`);
+    exLog('stop', `STOP_LOSS placed @ ${fmt$(stop)} (-5%)`);
+    exLog('tp',   `TAKE_PROFIT placed @ ${fmt$(tp)} (+15%)`);
+  }
+
+  EX_STATE.bar++;
+  renderState();
+  return true;
+}
+
+function startAuto(){
+  if (EX_STATE.running) return;
+  EX_STATE.running = true;
+  $exAuto.disabled = true; $exPause.disabled = false; $exTick.disabled = true;
+  $exStatus.textContent = 'Running…'; $exStatus.style.color = 'var(--accent)';
+  const speed = parseInt($exSpeed.value, 10);
+  const step = () => {
+    if (!EX_STATE.running) return;
+    const ok = executeBar();
+    if (!ok) return;
+    if (speed === 0) { while (EX_STATE.running && executeBar()){} stopAuto(); return; }
+    EX_STATE.timer = setTimeout(step, speed);
+  };
+  step();
+}
+function stopAuto(){
+  EX_STATE.running = false;
+  if (EX_STATE.timer){ clearTimeout(EX_STATE.timer); EX_STATE.timer = null; }
+  $exAuto.disabled = false; $exPause.disabled = true; $exTick.disabled = false;
+  $exStatus.textContent = EX_STATE.bar >= EX_BARS.length ? 'Replay complete' : 'Paused';
+  $exStatus.style.color = '';
+}
+function flatten(){
+  if (!EX_STATE.position){ exLog('info','Manual flatten requested · no open position'); return; }
+  const last = EX_BARS[Math.min(EX_STATE.bar, EX_BARS.length-1)];
+  const fillPx = last.close;
+  const p = EX_STATE.position;
+  const pnl = (fillPx - p.entry) * p.qty;
+  EX_STATE.balance += p.qty * fillPx;
+  exLog('signal', `MANUAL FLATTEN @ ${fmt$(fillPx)} · PnL ${fmt$(pnl)} (${fmtPct((fillPx/p.entry-1)*100)})`);
+  EX_STATE.position = null;
+  renderState();
+}
+function resetExec(){
+  stopAuto();
+  EX_STATE.balance = EX_INIT; EX_STATE.position = null; EX_STATE.log = []; EX_STATE.bar = 0;
+  exLog('info', `Engine reset · paper balance restored to ${fmt$(EX_INIT,0)}`);
+  $exStatus.textContent = 'Idle'; renderState();
+}
+
+$exTick.addEventListener('click', () => { executeBar(); });
+$exAuto.addEventListener('click', startAuto);
+$exPause.addEventListener('click', stopAuto);
+$exFlat.addEventListener('click', flatten);
+$exReset.addEventListener('click', resetExec);
+
+// Initial render
+exLog('info', `Executor ready · ${EX_BARS.length} bars of replayable BTC/USDT history loaded · broker=PaperBroker · capital=${fmt$(EX_INIT,0)}`);
+renderState();
+
+// Wire "Run backtest" chat action to drive the executor
+const _origHandle = handle;
+window.handle = function(q){
+  if (/(run.*backtest|simulate)/i.test(q.trim())){
+    pushUser(q);
+    setTimeout(() => {
+      pushBot(`Driving the live <b>Execution Engine</b> in instant mode — scroll down to watch the order log fill up.` + answerBacktest());
+      resetExec(); $exSpeed.value = '0'; startAuto();
+    }, 120);
+    return;
+  }
+  _origHandle(q);
+};
+chatForm.removeEventListener && chatForm.removeEventListener('submit', null);
+chatForm.onsubmit = e => {
+  e.preventDefault();
+  const q = chatInput.value.trim();
+  if (!q) return;
+  chatInput.value = '';
+  window.handle(q);
+};
+document.querySelectorAll('.qa-btn').forEach(b => { b.onclick = () => window.handle(b.dataset.q); });
+</script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"75124c326cb447fe934cde04713ae013","r":1,"server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>
